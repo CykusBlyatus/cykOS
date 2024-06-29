@@ -2,24 +2,46 @@
 CC = riscv64-unknown-elf-gcc
 AS = riscv64-unknown-elf-as
 
-# C and Assembly flags
-CFLAGS+=-I . -Wall -Wextra -Werror -mcmodel=medany -nostdlib -nostartfiles -nodefaultlibs
+# C, Assembly and Linker flags
+CFLAGS=-I src/ -I src/libc/ -Wall -Wextra -Werror -mcmodel=medany
 ASFLAGS=
+LDFLAGS = -T src/linker.ld -nostdlib -nostartfiles -nodefaultlibs
 
-OBJ_FILES=main.o startup.o uart.o syscon.o stdio.o ctype.o
+# Source files
+C_FILES=$(shell find src/ -name "*.c")
+ASM_FILES=$(shell find src/ -name "*.S")
 
-bootloader.bin: $(OBJ_FILES) linker.ld
-	riscv64-unknown-elf-gcc -o bootloader.elf -T linker.ld $(OBJ_FILES) -nostdlib -nostartfiles -nodefaultlibs
-	riscv64-unknown-elf-objcopy -O binary bootloader.elf bootloader.bin
+# Object files
+OBJS=$(C_FILES:src/%.c=obj/%.o) $(ASM_FILES:src/%.S=obj/%.o)
 
-%.o: %.S
-	$(AS) $(ASFLAGS) $< -o $@
+TARGET=kernel.bin
 
-%.o: %.c
-	$(CC) -c $(CFLAGS) $< -o $@
+$(TARGET): $(OBJS) src/linker.ld
+	@mkdir -p obj
+	@echo "Linking to $@..."
+	@riscv64-unknown-elf-gcc -o $(TARGET) $(OBJS) $(LDFLAGS)
 
-run: bootloader.bin
-	@qemu-system-riscv64 -nographic -machine virt -bios none -kernel bootloader.bin
+	@echo "CykOS ready!"
+
+# Generic rule to compile C files
+obj/%.o: src/%.c
+	@mkdir -p $(dir $@)
+	@echo "Compiling $@..."
+	@$(CC) -c $(CFLAGS) $< -o $@
+
+# Generic rule for assembly files
+obj/%.o: src/%.S
+	@mkdir -p $(dir $@)
+	@echo "Assembling $@..."
+	@$(AS) $(ASFLAGS) $< -o $@
+
+run: $(TARGET)
+	@qemu-system-riscv64 -nographic -machine virt -bios none -kernel $(TARGET)
+
+test:
+	@echo "C_FILES: $(C_FILES)"
+	@echo "ASM_FILES: $(ASM_FILES)"
+	@echo "OBJS: $(OBJS)"
 
 clean:
-	rm *.o bootloader.bin bootloader.elf >/dev/null 2>&1 || true
+	rm -r obj $(TARGET) >/dev/null 2>&1 || true
