@@ -1,36 +1,44 @@
+/**
+ * @file plic.c
+ * @author CykusBlyatus
+ * @brief Definition of functions for the PLIC (Platform-Level Interrupt Controller)
+ * @see https://github.com/riscv/riscv-plic-spec/blob/master/riscv-plic.adoc
+ */
+
 #include "plic.h"
 
 // Base address of the PLIC in QEMU's RISC-V `virt` machine
-#define PLIC_BASE_ADDR 0x0C000000ull
+#define PLIC_BASE 0x0C000000ull
 
-// Offsets for PLIC registers (these are typical and might vary)
-#define PLIC_PRIORITY_OFFSET   0x0000
-#define PLIC_ENABLE_OFFSET     0x2000
-#define PLIC_THRESHOLD_OFFSET  0x200000
-#define PLIC_CLAIM_OFFSET      0x200004
-
-// Helper macros to calculate addresses
-#define PLIC_PRIORITY(irq)     (PLIC_BASE_ADDR + PLIC_PRIORITY_OFFSET + (irq) * 4)
-#define PLIC_ENABLE(hart)      (PLIC_BASE_ADDR + PLIC_ENABLE_OFFSET + (hart) * 0x80)
-#define PLIC_THRESHOLD(hart)   (PLIC_BASE_ADDR + PLIC_THRESHOLD_OFFSET + (hart) * 0x1000)
-#define PLIC_CLAIM(hart)       (PLIC_BASE_ADDR + PLIC_CLAIM_OFFSET + (hart) * 0x1000)
+// Calculates the PLIC address at an offset specified in **bytes** (even though the returned value is a uint32_t*)
+#define PLIC_AT(offset) ((volatile uint32_t*)(PLIC_BASE + offset))
 
 // Assuming single hart (hart 0) for simplicity
 #define HART_ID 0
 
 void plic_set_priority(uint32_t irq, uint32_t priority) {
-    *(volatile uint32_t*)(PLIC_PRIORITY(irq)) = priority;
+    *PLIC_AT(irq * 4) = priority;
 }
 
-void plic_enable_interrupt(uint32_t irq) {
-    // Each hart has its own enable register, enabling interrupt for hart 0
-    *(volatile uint32_t *)(PLIC_ENABLE(HART_ID) + (irq / 32) * 4) |= (1 << (irq % 32));
+void plic_enable_interrupt(uint32_t context, uint32_t irq) {
+    // starts at plic + 0x2000
+    // 1024 sources, one bit per -> 1024/8 = 128 (0x80) bytes to include all sources per context
+    *PLIC_AT((0x2000) + (0x80 * context) + (4 * (irq / 32))) |= 1 << (irq % 32);
 }
 
-uint32_t plic_claim(void) {
-    return *(volatile uint32_t *)(PLIC_CLAIM(HART_ID));
+void plic_disable_interrupt(uint32_t context, uint32_t irq) {
+    // same story as plic_enable_interrupt
+    *PLIC_AT((0x2000) + (0x80 * context) + (4 * (irq / 32))) &= ~(1 << (irq % 32));
 }
 
-void plic_complete(uint32_t irq) {
-    *(volatile uint32_t *)(PLIC_CLAIM(HART_ID)) = irq;
+void plic_set_threshold(uint32_t context, uint32_t threshold) {
+    *PLIC_AT(0x200000 + 0x1000 * context) = threshold;
+}
+
+uint32_t plic_claim(uint32_t context) {
+    return *PLIC_AT(0x200004 + 0x1000 * context);
+}
+
+void plic_complete(uint32_t context, uint32_t irq) {
+    *PLIC_AT(0x200004 + 0x1000 * context) = irq;
 }

@@ -1,28 +1,35 @@
 #include "uart.h"
+#include "uart_macros.h"
 #include <stdint.h>
-
-#define UART0_BASE ((volatile uint8_t*)0x10000000)
-
-#define UART0_REG_RBR (*(UART0_BASE + 0x00)) // Receiver Buffer Register
-#define UART0_REG_THR (*(UART0_BASE + 0x00)) // Transmit Holding Register
-#define UART0_REG_IER (*(UART0_BASE + 0x01)) // Interrupt Enable Register
-#define UART0_REG_LSR (*(UART0_BASE + 0x05)) // Line Status Register
-
-#define UART_LSR_THRE 0x20 // Transmit Holding Register Empty
-#define UART_LSR_DR (1 << 0) // Data Ready
-
-#define UART_IER_RDA (1 << 0) // Received Data Available Interrupt Enable
+#include "utils.h"
+#include "syscon.h"
 
 void uart_init(void) {
-    UART0_REG_IER = UART_IER_RDA; // Enable receive data available interrupt
+    UART0_IER = 0; // disable interrupts
+
+    // set baud rate to 38.4K
+    UART0_LCR = UART_LCR_BAUD;
+    UART0_REG(0) = 3;
+    UART0_REG(1) = 0;
+
+    UART0_LCR = UART_LCR_BPC(8) | UART_LCR_PAR_NONE; // set word length to 8 bits, no parity
+
+    UART0_FCR = UART_FCR_CLR | UART_FCR_ENABLE; // clear and enable fifo
+
+    UART0_IER = UART_IER_RECV; // Enable receive data available interrupt
 }
 
 void uart_putchar(int c) {
-    while (!(UART0_REG_LSR & UART_LSR_THRE));  // Wait until the UART is ready to transmit
-    UART0_REG_THR = c;
+    for (uint64_t i = 0; i < 1000000; ++i) { // Wait until the UART is ready to transmit
+        if (UART0_LSR & UART_LSR_THRE) {
+            UART0_THR = c;
+            return;
+        }
+    }
+    poweroff(); // yeah.
 }
 
 char uart_read(void) {
-    while (!(UART0_REG_LSR & UART_LSR_DR));
-    return (char)UART0_REG_RBR;
+    while (!(UART0_LSR & UART_LSR_RECV));
+    return (char)UART0_RBR;
 }

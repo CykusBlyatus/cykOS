@@ -30,8 +30,11 @@
 #if ULLONG_MAX == 0xFFFFFFFFFFFFFFFF
     typedef long long int64_t;
     typedef unsigned long long uint64_t;
+#elif ULONG_MAX == 0xFFFFFFFFFFFFFFFF
+    typedef long int64_t;
+    typedef unsigned long uint64_t;
 #else
-    #error "expected primitive 'long long' to have a size of 8 bytes"
+    #error "expected primitive 'long' or 'long long' to have a size of 8 bytes"
 #endif
 
 #endif /* CYKOS_STDINT_H */
