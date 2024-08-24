@@ -16,7 +16,7 @@ void start() {
     csrw("mtvec", trap_handler_m); // set trap handler
     csrw("stvec", trap_handler_s);
 
-    // set "previous" privilege mode
+    // set "previous" privilege mode and enable interrupts
     DEBUG_CSRR("mstatus");
     csrc("mstatus", CSR_MSTATUS_MPP);
     csrs("mstatus", CSR_MSTATUS_MPP_S | CSR_MSTATUS_SIE | CSR_MSTATUS_MIE);
@@ -28,9 +28,9 @@ void start() {
 
     // delegate all interrupts and exceptions to supervisor mode.
     csrw("medeleg", 0xffff);
-    csrw("mideleg", 0xffff);
-    csrs("mie", CSR_MIE_SEIE | CSR_MIE_STIE | CSR_MIE_SSIE | CSR_MIE_MTIE);
-    csrs("sie", CSR_SIE_EXTERNAL | CSR_SIE_TIMER | CSR_SIE_SOFTWARE);
+    csrw("mideleg", CSR_MIP_SSIP | CSR_MIP_STIP | CSR_MIP_SEIP);
+    csrs("mie", CSR_MIE_SSIE | CSR_MIE_STIE | CSR_MIE_MTIE | CSR_MIE_SEIE | CSR_MIE_MEIE);
+    csrs("sie", CSR_SIE_SOFTWARE | CSR_SIE_TIMER | CSR_SIE_EXTERNAL);
 
     // configure Physical Memory Protection to give supervisor mode
     // access to all of physical memory.
@@ -52,8 +52,7 @@ int main() {
     plic_set_priority(UART0_IRQ, 1);
     plic_enable_interrupt(HART_CONTEXT(), UART0_IRQ);
 
-    int x = 5;
-    printf("among piss (x = %d and &x = %p)\n", x, &x);
+    // csrr("mstatus"); // uncomment to spam illegal instruction exceptions :3
 
     /*
     char c;

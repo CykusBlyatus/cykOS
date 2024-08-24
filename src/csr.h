@@ -9,7 +9,10 @@
 
 #define HART_CONTEXT() 1 // TODO: change it if you're ready to do multi-core :p
 
-#define XLEN 64 // RISCV-64, this macro should be moved somewhere else in the future
+// lazy way to make IDEs not complain
+#ifndef __riscv
+    #define __riscv_xlen 64
+#endif
 
 #include <stdint.h>
 #include "utils.h"
@@ -44,7 +47,7 @@
 #define CSR_MSTATUS_UXL     (3L << 32) // User XLEN (1 = 32, 2 = 64, 3 = 128)
 #define CSR_MSTATUS_SXL     (3L << 34) // Supervisor XLEN (1 = 32, 2 = 64, 3 = 128)
 
-#define CSR_MSTATUS_SD      BIT(XLEN - 1) // State Dirty (summarizes whether either FS or XS field is dirty, being set to 1 if any is dirty)
+#define CSR_MSTATUS_SD      BIT(__riscv_xlen - 1) // State Dirty (summarizes whether either FS or XS field is dirty, being set to 1 if any is dirty)
 
 /////////////////////////////////////////////////////
 
@@ -66,11 +69,13 @@
 
 #define CSR_SSTATUS_UXL     (3L << 32) // User XLEN (1 = 32, 2 = 64, 3 = 128)
 
-#define CSR_SSTATUS_SD      BIT(XLEN - 1) // State Dirty (summarizes whether either FS or XS field is dirty, being set to 1 if any is dirty)
+#define CSR_SSTATUS_SD      BIT(__riscv_xlen - 1) // State Dirty (summarizes whether either FS or XS field is dirty, being set to 1 if any is dirty)
 
 /////////////////////////////////////////////////////
 
 // Machine Trap-Vector Base-Address Register (mtvec)
+
+// What the fuck is this, this is probably wrong
 
 #define CSR_MTVEC_ADDR_TO_BASE(addr) (addr << 2) // shifts the address to the right position
 #define CSR_MTVEC_MODE 3 // mask to get the mtvec mode (0 = direct (interrupts set pc to BASE), 1 = vectored (interrupts set pc to BASE+4*cause), 2+ = reserved)
@@ -80,7 +85,7 @@
 
 //  Machine Cause Register (mcause)
 
-#define CSR_MCAUSE_INT(code) (BIT(XLEN - 1) | code) // merges the interrupt bit with the interrupt code
+#define CSR_MCAUSE_INT(code) (BIT(__riscv_xlen - 1) | code) // merges the interrupt bit with the interrupt code
 
 // Interrupt Codes
 
@@ -118,18 +123,18 @@
 
 // Machine Interrupt Enable (mie)
 
-#define CSR_MIE_MEIE BIT(11) // (Machine) Machine    External Interrupts Enable
-//efine CSR_MIE_HEIE BIT(10) // (Machine) Hypervisor External Interrupts Enable
-#define CSR_MIE_SEIE BIT(9)  // (Machine) Supervisor External Interrupts Enable
-#define CSR_MIE_UEIE BIT(8)  // (Machine) User       External Interrupts Enable
-#define CSR_MIE_MTIE BIT(7)  // (Machine) Machine    Timer Interrupts Enable
-//efine CSR_MIE_HSIE BIT(6)  // (Machine) Hypervisor Timer Interrupts Enable
-#define CSR_MIE_STIE BIT(5)  // (Machine) Supervisor Timer Interrupts Enable
-#define CSR_MIE_UTIE BIT(4)  // (Machine) User       Timer Interrupts Enable
-#define CSR_MIE_MSIE BIT(3)  // (Machine) Machine    Software Interrupts Enable
-//efine CSR_MIE_HSIE BIT(2)  // (Machine) Hypervisor Software Interrupts Enable
-#define CSR_MIE_SSIE BIT(1)  // (Machine) Supervisor Software Interrupts Enable
-#define CSR_MIE_USIE BIT(0)  // (Machine) User       Software Interrupts Enable
+#define CSR_MIE_MEIE BIT(11) // Machine    External Interrupts Enable
+//efine CSR_MIE_HEIE BIT(10) // Hypervisor External Interrupts Enable
+#define CSR_MIE_SEIE BIT(9)  // Supervisor External Interrupts Enable
+#define CSR_MIE_UEIE BIT(8)  // User       External Interrupts Enable
+#define CSR_MIE_MTIE BIT(7)  // Machine    Timer Interrupts Enable
+//efine CSR_MIE_HSIE BIT(6)  // Hypervisor Timer Interrupts Enable
+#define CSR_MIE_STIE BIT(5)  // Supervisor Timer Interrupts Enable
+#define CSR_MIE_UTIE BIT(4)  // User       Timer Interrupts Enable
+#define CSR_MIE_MSIE BIT(3)  // Machine    Software Interrupts Enable
+//efine CSR_MIE_HSIE BIT(2)  // Hypervisor Software Interrupts Enable
+#define CSR_MIE_SSIE BIT(1)  // Supervisor Software Interrupts Enable
+#define CSR_MIE_USIE BIT(0)  // User       Software Interrupts Enable
 
 /////////////////////////////////////////////////////
 
@@ -137,6 +142,23 @@
 #define CSR_SIE_EXTERNAL    BIT(9)
 #define CSR_SIE_TIMER       BIT(5)
 #define CSR_SIE_SOFTWARE    BIT(1)
+
+/////////////////////////////////////////////////////
+
+// Machine Interrupt Pending (mip)
+
+#define CSR_MIP_MEIP BIT(11) // Machine    External Interrupt Pending
+//efine CSR_MIP_HEIP BIT(10) // Hypervisor External Interrupt Pending
+#define CSR_MIP_SEIP BIT(9)  // Supervisor External Interrupt Pending
+#define CSR_MIP_UEIP BIT(8)  // User       External Interrupt Pending
+#define CSR_MIP_MTIP BIT(7)  // Machine    Timer Interrupt Pending
+//efine CSR_MIP_HSIP BIT(6)  // Hypervisor Timer Interrupt Pending
+#define CSR_MIP_STIP BIT(5)  // Supervisor Timer Interrupt Pending
+#define CSR_MIP_UTIP BIT(4)  // User       Timer Interrupt Pending
+#define CSR_MIP_MSIP BIT(3)  // Machine    Software Interrupt Pending
+//efine CSR_MIP_HSIP BIT(2)  // Hypervisor Software Interrupt Pending
+#define CSR_MIP_SSIP BIT(1)  // Supervisor Software Interrupt Pending
+#define CSR_MIP_USIP BIT(0)  // User       Software Interrupt Pending
 
 /////////////////////////////////////////////////////
 
@@ -157,7 +179,6 @@
     uint64_t x = (uint64_t) bits;\
     DEBUG_INFO("csrs(\"%s\", %s " ANSI_MAGENTA "(%p)" ANSI_RESET ")", reg, #bits, (void*)x);\
     asm volatile ("csrs " reg ",%0" : : "r" (x));\
-    DEBUG_INFO("csrs done!");\
 } while(0)
 
 // CSR clear bits

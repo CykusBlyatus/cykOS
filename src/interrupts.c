@@ -9,58 +9,26 @@
 #include <auxiliary/debug_enable.h>
 #include <auxiliary/debug.h>
 
-/*
-void __attribute__((interrupt ("machine"))) irq_handler() {
-    uint32_t irq = plic_claim(HART_CONTEXT());
-    if (irq == UART0_IRQ) {
-        char c = uart_read();
-        if (c == 27) // ESC
-            poweroff();
-        putchar(c);
-    }
-    plic_complete(HART_CONTEXT(), irq);
-}
-*/
-
-extern void trap_handler();
-
-void hw_enable_interrupts() {
-    // Enable global interrupts in the machine status register
-    asm volatile ("csrw mtvec, %0" :: "r" (trap_handler)); // Set trap handler
-    asm volatile ("csrw mstatus, 8\n"); // Set MIE (Machine Interrupt Enable) bit
-
-    /*
-    // Enable external interrupts in the machine interrupt enable register
-    asm volatile (
-        "li t0, 0x800\n"       // Load the immediate value 0x800 (bit 11)
-        "csrrs zero, mie, t0\n"  // Set the MEIE (Machine External Interrupt Enable) bit
-    );
-    //*/
-}
+#include "timer.h"
 
 void kernel_trap() {
     DEBUG_PRINTF("called");
 
-    uint64_t sepc, sstatus, scause;
-    sepc = csrr("sepc");
-    csrr("mepc");
-    sstatus = csrr("sstatus");
-    csrr("mstatus");
-    scause = csrr("scause");
-    csrr("mcause");
-
-    csrr("sip");
-    csrr("mip");
+    __attribute__((unused)) uint64_t
+        sepc = csrr("sepc"),
+        sstatus = csrr("sstatus"),
+        scause = csrr("scause"),
+        sip = csrr("sip");
 
     switch (scause) {
         case CSR_MCAUSE_SEI: {
             int irq = plic_claim(HART_CONTEXT());
             switch (irq) {
                 case UART0_IRQ:
-                    DEBUG_SUCCESS("UART interrupt");
+                    DEBUG_INFO("UART interrupt");
                     break;
                 default:
-                    DEBUG_WARN("Interrupt not from UART (irq = %d)", irq);
+                    DEBUG_WARN("irq = %d", irq);
             }
 
             if (irq)
@@ -68,6 +36,13 @@ void kernel_trap() {
 
             break;
         }
+        case CSR_MCAUSE_STI:
+            DEBUG_INFO("timer interrupt");
+            mtimecmp = mtime + 10000000;
+            break;
+        case CSR_MCAUSE_SSI:
+            DEBUG_INFO("software interrupt (ignore for now)");
+            break;
         default:
             DEBUG_WARN("scause = %p", (void*) scause);
     }
@@ -76,4 +51,24 @@ void kernel_trap() {
     csrw("sstatus", sstatus);
 
     // poweroff();
+}
+
+// trying to get rid of this fucker
+void machine_trap() {
+    DEBUG_PRINTF("called");
+
+    __attribute__((unused)) uint64_t
+        mepc = csrr("mepc"),
+        mstatus = csrr("mstatus"),
+        mcause = csrr("mcause"),
+        mip = csrr("mip");
+    
+    switch (mcause) {
+        case CSR_MCAUSE_MTI:
+            DEBUG_INFO("timer interrupt");
+            mtimecmp = mtime + 10000000;
+            break;
+        default:
+            DEBUG_WARN("mcause = %p", (void*) mcause);
+    }
 }

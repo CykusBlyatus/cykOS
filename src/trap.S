@@ -1,9 +1,6 @@
-.globl trap_handler
-trap_handler:
-        # make room to save registers.
+.macro save_regs
         addi sp, sp, -256
 
-        # save the registers.
         sd ra, 0(sp)
         sd sp, 8(sp)
         sd gp, 16(sp)
@@ -35,11 +32,9 @@ trap_handler:
         sd t4, 224(sp)
         sd t5, 232(sp)
         sd t6, 240(sp)
+.endm
 
-        # call the C trap handler in trap.c
-        call kernel_trap
-
-        # restore registers.
+.macro restore_regs
         ld ra, 0(sp)
         ld sp, 8(sp)
         ld gp, 16(sp)
@@ -73,41 +68,18 @@ trap_handler:
         ld t6, 240(sp)
 
         addi sp, sp, 256
-
-        # return to whatever we were doing in the kernel.
-        ret
+.endm
 
 .globl trap_handler_s
 trap_handler_s:
-        addi sp,sp,-8
-        sd ra,(sp)
-        call trap_handler
-        ld ra,(sp)
-        addi sp,sp,8
+        save_regs
+        call kernel_trap
+        restore_regs
         sret
 
 .globl trap_handler_m
 trap_handler_m:
-        addi sp,sp,-8
-        sd ra,(sp)
-        call trap_handler
-        ld ra,(sp)
-        addi sp,sp,8
-        mret
-
-.globl m_handler
-m_handler:
-
-        # set previous mode to supervisor
-        li t0, 0x01800
-        csrc mstatus, t0
-        li t0, 0x0800
-        csrs mstatus, t0
-
-        # set mret address
-        la t0, trap_handler
-        csrw mepc, t0
-
-        ld t0,-8(sp)
-
+        save_regs
+        call machine_trap
+        restore_regs
         mret
