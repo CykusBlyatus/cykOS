@@ -17,9 +17,8 @@ OBJS=$(C_FILES:src/%.c=obj/%.o) $(ASM_FILES:src/%.S=obj/%.o)
 TARGET=kernel.bin
 
 $(TARGET): $(OBJS) src/linker.ld
-	@mkdir -p obj
 	@echo "Linking to $@..."
-	@riscv64-unknown-elf-gcc -o $(TARGET) $(OBJS) $(LDFLAGS)
+	@$(CC) -o $(TARGET) $(OBJS) $(LDFLAGS)
 
 	@echo "CykOS ready!"
 

@@ -6,30 +6,28 @@
 #include "csr.h"
 #include "timer.h"
 
-extern void trap_handler();
 extern void trap_handler_s();
 extern void trap_handler_m();
 int main();
 
 void start() {
     csrw("mepc", main); // set "return" address to main
-    csrw("mtvec", trap_handler_m); // set trap handler
+    csrw("mtvec", trap_handler_m);
     csrw("stvec", trap_handler_s);
 
     // set "previous" privilege mode and enable interrupts
     DEBUG_CSRR("mstatus");
     csrc("mstatus", CSR_MSTATUS_MPP);
-    csrs("mstatus", CSR_MSTATUS_MPP_S | CSR_MSTATUS_SIE | CSR_MSTATUS_MIE);
+    csrs("mstatus", CSR_MSTATUS_MPP_S | CSR_MSTATUS_SIE);
     DEBUG_CSRR("mstatus");
 
     DEBUG_CSRR("sstatus");
     csrs("sstatus", CSR_SSTATUS_SIE);
     DEBUG_CSRR("sstatus");
 
-    // delegate all interrupts and exceptions to supervisor mode.
-    csrw("medeleg", 0xffff);
-    csrw("mideleg", CSR_MIP_SSIP | CSR_MIP_STIP | CSR_MIP_SEIP);
-    csrs("mie", CSR_MIE_SSIE | CSR_MIE_STIE | CSR_MIE_MTIE | CSR_MIE_SEIE | CSR_MIE_MEIE);
+    csrw("medeleg", 0xffff & ~BIT(CSR_MCAUSE_ECALL_S)); // delegate all exceptions (except ecall-S) to S-mode
+    csrw("mideleg", CSR_MIP_SSIP | CSR_MIP_STIP | CSR_MIP_SEIP); // delegate all interrupts to S-mode
+    csrs("mie", CSR_MIE_SSIE | CSR_MIE_STIE | CSR_MIE_MTIE | CSR_MIE_SEIE);
     csrs("sie", CSR_SIE_SOFTWARE | CSR_SIE_TIMER | CSR_SIE_EXTERNAL);
 
     // configure Physical Memory Protection to give supervisor mode
@@ -46,30 +44,34 @@ void start() {
     asm volatile ("mret"); // jump to to main
 }
 
+// (Already in Supervisor Mode)
 int main() {
     printf("%s called\n", __func__);
+
+    //*
     uart_init();
     plic_set_priority(UART0_IRQ, 1);
     plic_enable_interrupt(HART_CONTEXT(), UART0_IRQ);
+    //*/
 
-    // csrr("mstatus"); // uncomment to spam illegal instruction exceptions :3
-
-    /*
+    DEBUG_SUCCESS("Entering uart_read() loop!");
+    //*
     char c;
     while (1) {
         c = uart_read();
         if (c == 27) // ESC
-            break;
+            poweroff();
         putchar(c);
     }
     //*/
 
-    //*
+    /*
     while (1) {
         printf("Waiting for interrupt...\n");
         asm volatile ("wfi");
     }
     //*/
 
+    DEBUG_WARN("reached end of main");
     poweroff();
 }

@@ -11,6 +11,7 @@
 
 // lazy way to make IDEs not complain
 #ifndef __riscv
+    #define __riscv
     #define __riscv_xlen 64
 #endif
 
@@ -75,11 +76,9 @@
 
 // Machine Trap-Vector Base-Address Register (mtvec)
 
-// What the fuck is this, this is probably wrong
-
-#define CSR_MTVEC_ADDR_TO_BASE(addr) (addr << 2) // shifts the address to the right position
-#define CSR_MTVEC_MODE 3 // mask to get the mtvec mode (0 = direct (interrupts set pc to BASE), 1 = vectored (interrupts set pc to BASE+4*cause), 2+ = reserved)
-#define CSR_MTVEC_GET_ADDR(mtvec) (mtvec >> 2) // gets the address stored in mtvec
+#define CSR_MTVEC_MODE 3        // mask to get the mtvec mode (0 = direct (interrupts set pc to BASE), 1 = vectored (interrupts set pc to BASE+4*cause), 2+ = reserved)
+#define CSR_MTVEC_DIRECT 0      // all traps set pc to mtvec
+#define CSR_MTVEC_VECTORED 1    // interrupts set pc to mtvec + 4 * cause
 
 /////////////////////////////////////////////////////
 

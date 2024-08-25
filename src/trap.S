@@ -79,7 +79,44 @@ trap_handler_s:
 
 .globl trap_handler_m
 trap_handler_m:
-        save_regs
-        call machine_trap
-        restore_regs
-        mret
+        sd t0, -8(sp)
+        sd t1, -16(sp)
+        csrr t0, mcause
+
+        # check if it's an exception or an interrupt
+        li t1, 1 << 63
+        and t1, t0, t1
+        beqz t1, 1f
+
+        # interrupt (delegate to S-mode)
+                # disable M-interrupts on the given source
+                csrr t0, mip
+                csrc mie, t0
+
+                # raise interrupt of same source for S-mode (which is 2 bits to the right)
+                srli t0, t0, 2
+                csrs mip, t0
+
+                ld t0, -8(sp)
+                ld t1, -8(sp)
+                mret
+
+        # exception
+1:              bnez a7, 1f
+
+                # clear STIP
+                li t0, 1 << 5
+                csrc mip, t0
+
+                # reenable MTI
+                slli t0, t0, 2
+                csrs mie, t0
+
+                # set mepc to next instruction
+1:              csrr t0, mepc
+                addi t0, t0, 4
+                csrw mepc, t0
+
+                ld t0, -8(sp)
+                ld t1, -16(sp)
+                mret
