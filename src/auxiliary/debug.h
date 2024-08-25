@@ -13,8 +13,6 @@
     #define DEBUG_PERROR(str) DEBUG_ERROR("%s: DEBUG_PERROR called but strerror was not implemented at the time this macro was created\n", str)
     #define DEBUG_INFO(...) DEBUG_PRINTFV(45,37,45,__VA_ARGS__)
     #define DEBUG_SUCCESS(...) DEBUG_PRINTFV(28,22,28,__VA_ARGS__)
-
-    #define DEBUG_CSRR(reg) csrr(reg)
 #else
     #define DEBUG_PRINTF(...)
     #define DEBUG_PRINTFV(...)
@@ -23,7 +21,6 @@
     #define DEBUG_PERROR(...)
     #define DEBUG_INFO(...)
     #define DEBUG_SUCCESS(...)
-    #define DEBUG_CSRR(reg)
 #endif
 
 #endif /* CYKOS_DEBUG_H */

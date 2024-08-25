@@ -13,9 +13,6 @@
 // Calculates the PLIC address at an offset specified in **bytes** (even though the returned value is a uint32_t*)
 #define PLIC_AT(offset) ((volatile uint32_t*)(PLIC_BASE + offset))
 
-// Assuming single hart (hart 0) for simplicity
-#define HART_ID 0
-
 void plic_set_priority(uint32_t irq, uint32_t priority) {
     *PLIC_AT(irq * 4) = priority;
 }

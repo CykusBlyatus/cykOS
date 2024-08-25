@@ -16,18 +16,14 @@ void start() {
     csrw("stvec", trap_handler_s);
 
     // set "previous" privilege mode and enable interrupts
-    DEBUG_CSRR("mstatus");
     csrc("mstatus", CSR_MSTATUS_MPP);
-    csrs("mstatus", CSR_MSTATUS_MPP_S | CSR_MSTATUS_SIE);
-    DEBUG_CSRR("mstatus");
+    csrs("mstatus", CSR_MSTATUS_MPP_S | CSR_MSTATUS_SIE | CSR_MSTATUS_MIE);
 
-    DEBUG_CSRR("sstatus");
     csrs("sstatus", CSR_SSTATUS_SIE);
-    DEBUG_CSRR("sstatus");
 
     csrw("medeleg", 0xffff & ~BIT(CSR_MCAUSE_ECALL_S)); // delegate all exceptions (except ecall-S) to S-mode
     csrw("mideleg", CSR_MIP_SSIP | CSR_MIP_STIP | CSR_MIP_SEIP); // delegate all interrupts to S-mode
-    csrs("mie", CSR_MIE_SSIE | CSR_MIE_STIE | CSR_MIE_MTIE | CSR_MIE_SEIE);
+    csrs("mie", CSR_MIE_SSIE | CSR_MIE_STIE | CSR_MIE_MTIE | CSR_MIE_SEIE | CSR_MIE_MEIE);
     csrs("sie", CSR_SIE_SOFTWARE | CSR_SIE_TIMER | CSR_SIE_EXTERNAL);
 
     // configure Physical Memory Protection to give supervisor mode
@@ -35,8 +31,6 @@ void start() {
     csrw("pmpaddr0", 0x3fffffffffffff);
     csrw("pmpcfg0", 0xf);
     csrw("satp", 0); // disable paging
-
-    DEBUG_CSRR("mepc");
 
     mtimer_init();
 

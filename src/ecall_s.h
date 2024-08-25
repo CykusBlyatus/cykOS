@@ -3,10 +3,10 @@
 
 enum {
     /**
-     * @brief Tells M-mode that the timer interrupt was handled
-     * @param None
+     * @brief Tells M-mode that an interrupt has been handled
+     * @param a0 Should contain the pending bit of the interrupt (e.g. STIP aka 0x20 for timer)
      */
-    ECALL_S_STI_ACK,
+    ECALL_S_INT_ACK,
 };
 
 #endif /* CYKOS_ECALL_S_H */

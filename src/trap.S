@@ -98,18 +98,18 @@ trap_handler_m:
                 csrs mip, t0
 
                 ld t0, -8(sp)
-                ld t1, -8(sp)
+                ld t1, -16(sp)
                 mret
 
-        # exception
+        # exception (for now I assume ecall-S)
+        # with a7 == 0, a0 should contain the pending bit to clear
 1:              bnez a7, 1f
 
-                # clear STIP
-                li t0, 1 << 5
-                csrc mip, t0
+                # clear SxIP
+                csrc mip, a0
 
-                # reenable MTI
-                slli t0, t0, 2
+                # reenable MxI
+                slli t0, a0, 2
                 csrs mie, t0
 
                 # set mepc to next instruction

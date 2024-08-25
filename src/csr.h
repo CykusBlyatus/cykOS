@@ -7,7 +7,7 @@
 #ifndef CYKOS_CSR_H
 #define CYKOS_CSR_H
 
-#define HART_CONTEXT() 1 // TODO: change it if you're ready to do multi-core :p
+#define HART_CONTEXT() 0 // TODO: change it if you're ready to do multi-core :p
 
 // lazy way to make IDEs not complain
 #ifndef __riscv
