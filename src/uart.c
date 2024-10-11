@@ -1,7 +1,6 @@
 #include "uart.h"
 #include "uart_macros.h"
 #include <stdint.h>
-#include "utils.h"
 #include "syscon.h"
 
 void uart_init(void) {

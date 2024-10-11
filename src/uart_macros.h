@@ -1,6 +1,8 @@
 #ifndef CYKOS_UART_MACROS_H
 #define CYKOS_UART_MACROS_H
 
+#include "utils.h"
+
 #define UART0_BASE ((volatile uint8_t*)0x10000000)
 #define UART0_REG(offset) (*(UART0_BASE + offset))
 

@@ -1,29 +1,25 @@
 #include <stdio.h>
 #include "uart.h"
 #include "syscon.h"
-#include "interrupts.h"
 #include "plic.h"
 #include "csr.h"
 #include "timer.h"
 
 extern void trap_handler_s();
-extern void trap_handler_m();
 int main();
 
 void start() {
     csrw("mepc", main); // set "return" address to main
-    csrw("mtvec", trap_handler_m);
     csrw("stvec", trap_handler_s);
 
     // set "previous" privilege mode and enable interrupts
     csrc("mstatus", CSR_MSTATUS_MPP);
-    csrs("mstatus", CSR_MSTATUS_MPP_S | CSR_MSTATUS_SIE | CSR_MSTATUS_MIE);
+    csrs("mstatus", CSR_MSTATUS_MPP_S);
 
     csrs("sstatus", CSR_SSTATUS_SIE);
 
-    csrw("medeleg", 0xffff & ~BIT(CSR_MCAUSE_ECALL_S)); // delegate all exceptions (except ecall-S) to S-mode
-    csrw("mideleg", CSR_MIP_SSIP | CSR_MIP_STIP | CSR_MIP_SEIP); // delegate all interrupts to S-mode
-    csrs("mie", CSR_MIE_SSIE | CSR_MIE_STIE | CSR_MIE_MTIE | CSR_MIE_SEIE | CSR_MIE_MEIE);
+    csrw("medeleg", 0xffff); // delegate all exceptions to S-mode
+    csrw("mideleg", 0xffff); // delegate all interrupts to S-mode
     csrs("sie", CSR_SIE_SOFTWARE | CSR_SIE_TIMER | CSR_SIE_EXTERNAL);
 
     // configure Physical Memory Protection to give supervisor mode
@@ -32,7 +28,7 @@ void start() {
     csrw("pmpcfg0", 0xf);
     csrw("satp", 0); // disable paging
 
-    mtimer_init();
+    stimer_init();
 
     DEBUG_INFO("calling mret");
     asm volatile ("mret"); // jump to to main

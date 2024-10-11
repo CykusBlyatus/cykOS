@@ -14,11 +14,12 @@ uint64_t mtime_() {
 }
 
 void mtimer_init() {
-
-    // csrs("menvcfg", BIT(XLEN-1)); // unknown CSR 'menvcfg'
-    // csrs("mcounteren", BIT(1));
-
     MTIMECMP = MTIME + 10000000;
+}
 
-    // csrs("mie", CSR_MIE_MTIE | CSR_MIE_STIE);
+void stimer_init() {
+  csrs("menvcfg", BIT(__riscv_xlen-1));
+  csrs("mcounteren", BIT(1));
+
+  csrw("stimecmp", mtime + 10000000);
 }
