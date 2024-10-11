@@ -7,6 +7,8 @@
 #include <auxiliary/debug.h>
 
 #include "timer.h"
+#include "syscon.h"
+#include "uart.h"
 
 void kernel_trap() {
     DEBUG_PRINTF("called");
@@ -24,6 +26,10 @@ void kernel_trap() {
             switch (irq) {
                 case UART0_IRQ:
                     DEBUG_INFO("UART interrupt");
+                    char c = uart_read();
+                    if (c == 27) // ESC
+                        poweroff();
+                    printf("Character received: '%c' (%d)\n", c, c);
                     break;
                 default:
                     DEBUG_WARN("irq = %d", irq);
@@ -47,5 +53,6 @@ void kernel_trap() {
         }
         default:
             DEBUG_WARN("scause = %p", (void*) scause);
+            poweroff();
     }
 }

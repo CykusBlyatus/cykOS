@@ -3,6 +3,4 @@
 
 void kernel_trap();
 
-void machine_trap();
-
 #endif // CYKOS_INTERRUPTS_H

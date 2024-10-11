@@ -20,12 +20,12 @@ void plic_set_priority(uint32_t irq, uint32_t priority) {
 void plic_enable_interrupt(uint32_t context, uint32_t irq) {
     // starts at plic + 0x2000
     // 1024 sources, one bit per -> 1024/8 = 128 (0x80) bytes to include all sources per context
-    *PLIC_AT((0x2000) + (0x80 * context) + (4 * (irq / 32))) |= 1 << (irq % 32);
+    *PLIC_AT((0x2080) + (0x100 * context) + (4 * (irq / 32))) |= 1 << (irq % 32);
 }
 
 void plic_disable_interrupt(uint32_t context, uint32_t irq) {
     // same story as plic_enable_interrupt
-    *PLIC_AT((0x2000) + (0x80 * context) + (4 * (irq / 32))) &= ~(1 << (irq % 32));
+    *PLIC_AT((0x2080) + (0x100 * context) + (4 * (irq / 32))) &= ~(1 << (irq % 32));
 }
 
 void plic_set_threshold(uint32_t context, uint32_t threshold) {
@@ -33,9 +33,9 @@ void plic_set_threshold(uint32_t context, uint32_t threshold) {
 }
 
 uint32_t plic_claim(uint32_t context) {
-    return *PLIC_AT(0x200004 + 0x1000 * context);
+    return *PLIC_AT(0x201004 + 0x2000 * context);
 }
 
 void plic_complete(uint32_t context, uint32_t irq) {
-    *PLIC_AT(0x200004 + 0x1000 * context) = irq;
+    *PLIC_AT(0x201004 + 0x2000 * context) = irq;
 }

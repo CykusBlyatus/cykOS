@@ -20,6 +20,7 @@ void start() {
 
     csrw("medeleg", 0xffff); // delegate all exceptions to S-mode
     csrw("mideleg", 0xffff); // delegate all interrupts to S-mode
+    csrs("mie", CSR_MIE_SSIE | CSR_MIE_STIE | CSR_MIE_SEIE | CSR_MIE_MEIE);
     csrs("sie", CSR_SIE_SOFTWARE | CSR_SIE_TIMER | CSR_SIE_EXTERNAL);
 
     // configure Physical Memory Protection to give supervisor mode
@@ -44,8 +45,8 @@ int main() {
     plic_enable_interrupt(HART_CONTEXT(), UART0_IRQ);
     //*/
 
+    /*
     DEBUG_SUCCESS("Entering uart_read() loop!");
-    //*
     char c;
     while (1) {
         c = uart_read();
@@ -55,7 +56,8 @@ int main() {
     }
     //*/
 
-    /*
+    //*
+    DEBUG_SUCCESS("Entering 'wfi' loop!");
     while (1) {
         printf("Waiting for interrupt...\n");
         asm volatile ("wfi");
