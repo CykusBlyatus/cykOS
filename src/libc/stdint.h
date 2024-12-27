@@ -37,4 +37,17 @@
     #error "expected primitive 'long' or 'long long' to have a size of 8 bytes"
 #endif
 
+#if __SIZEOF_POINTER__ == 4
+    typedef int32_t intptr_t;
+    typedef uint32_t uintptr_t;
+#elif __SIZEOF_POINTER__ == 8
+    typedef int64_t intptr_t;
+    typedef uint64_t uintptr_t;
+#elif __SIZEOF_POINTER__ == 16
+    typedef int128_t intptr_t;
+    typedef uint128_t uintptr_t;
+#else
+    #error "expected __SIZEOF_POINTER__ to be 4, 8 or 16"
+#endif
+
 #endif /* CYKOS_STDINT_H */

@@ -4,6 +4,7 @@
 #include "plic.h"
 #include "csr.h"
 #include "timer.h"
+#include "paging.h"
 
 extern void trap_handler_s();
 int main();
@@ -44,6 +45,8 @@ int main() {
     plic_set_priority(UART0_IRQ, 1);
     plic_enable_interrupt(HART_CONTEXT(), UART0_IRQ);
     //*/
+
+    vminit();
 
     /*
     DEBUG_SUCCESS("Entering uart_read() loop!");
