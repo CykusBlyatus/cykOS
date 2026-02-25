@@ -185,8 +185,7 @@ int vprintf(const char *format, va_list arg) {
                     putchar('%');
                     putchar(*format);
             }
-        } else
-        putchar(*format);
+        } else putchar(*format);
         ++format;
     }
     return 0;

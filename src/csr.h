@@ -16,6 +16,10 @@
     #define __riscv_xlen 64
 #endif
 
+#if __riscv_xlen != 32 && __riscv_xlen != 64 && __riscv_xlen != 128
+    #error "Unsupported RISC-V architecture (expected __riscv_xlen to be 32, 64 or 128)"
+#endif
+
 #include <stdint.h>
 
 // Status Register (mstatus, sstatus, etc.)
@@ -118,29 +122,62 @@
 
 
 
+// Supervisor Address Translation and Protection (satp)
+
+#define CSR_SATP_BARE 0 // No paging
+#if __riscv_xlen == 32
+    #define CSR_SATP_PPN(satp) ((satp) & 0x3fffff) // Physical Page Number (Physical Address divided by PGSIZE)
+    #define CSR_SATP_ASID(satp) ((satp) & (0x1ff << 22)) // Address Space ID
+    #define CSR_SATP_MODE(satp) ((satp) & (1 << 31)) // Paging Mode
+    #define CSR_SATP_SV32 (1ull << 31)  // Page-based 32-bit virtual addressing
+#elif __riscv_xlen == 64 || __riscv_xlen == 128
+    #define CSR_SATP_PPN(satp) ((satp) & 0xfffffffffff) // Physical Page Number (Physical Address divided by PGSIZE)
+    #define CSR_SATP_ASID(satp) ((satp) & (0xffff << 44)) // Address Space ID
+    #define CSR_SATP_MODE(satp) ((satp) & (0xf << 60)) // Paging Mode
+    #define CSR_SATP_SV39 (8ull << 60)  // Page-based 39-bit virtual addressing
+    #define CSR_SATP_SV48 (9ull << 60)  // Page-based 48-bit virtual addressing
+    #define CSR_SATP_SV57 (10ull << 60) // Page-based 57-bit virtual addressing
+    #define CSR_SATP_SV64 (11ull << 60) // Reserved for page-based 64-bit virtual addressing
+#endif
+
+/////////////////////////////////////////////////////
+
 // Control/Status Register (CSR) instructions
 
-#include <auxiliary/debug_enable.h>
+// Since this is a header file, we have to make sure it doesn't affect other files' DEBUG
+#ifdef DEBUG
+    #define DEBUG_DEFINED
+#endif
+
+#define DEBUG_CSR // For now, CSR debug is enabled everywhere
+
+// macro that can be set if includer wants to receive CSR debug info
+#ifdef DEBUG_CSR
+    #define DEBUG
+#else
+    #undef DEBUG
+#endif
+
 #include <auxiliary/debug.h>
 
 // CSR write
 #define CSRW(reg,val) do {\
     uint64_t x = (uint64_t) val;\
-    DEBUG_INFO("csrw(\"%s\", %s " ANSI_MAGENTA "(%p)" ANSI_RESET ")", reg, #val, (void*)x);\
+    DEBUG_INFO("csrw(\"" reg "\" " ANSI_MAGENTA "(%p)" ANSI_RESET ", %s " ANSI_MAGENTA "(%p)" ANSI_RESET ")", (void*)csrr_nodebug(reg), #val, (void*)x);\
     asm volatile ("csrw " reg ",%0" : : "r" (x));\
 } while(0)
 
 // CSR set bits
 #define CSRS(reg,bits) do {\
     uint64_t x = (uint64_t) bits;\
-    DEBUG_INFO("csrs(\"%s\", %s " ANSI_MAGENTA "(%p)" ANSI_RESET ")", reg, #bits, (void*)x);\
+    DEBUG_INFO("csrs(\"" reg "\" " ANSI_MAGENTA "(%p)" ANSI_RESET ", %s " ANSI_MAGENTA "(%p)" ANSI_RESET ")", (void*)csrr_nodebug(reg), #bits, (void*)x);\
     asm volatile ("csrs " reg ",%0" : : "r" (x));\
 } while(0)
 
 // CSR clear bits
 #define CSRC(reg,bits) do {\
     uint64_t x = (uint64_t) bits;\
-    DEBUG_INFO("csrc(\"%s\", %s " ANSI_MAGENTA "(%p)" ANSI_RESET ")", reg, #bits, (void*)x);\
+    DEBUG_INFO("csrc(\"" reg "\" " ANSI_MAGENTA "(%p)" ANSI_RESET ", %s " ANSI_MAGENTA "(%p)" ANSI_RESET ")", (void*)csrr_nodebug(reg), #bits, (void*)x);\
     asm volatile ("csrc " reg ",%0" : : "r" (x));\
 } while(0)
 
@@ -151,5 +188,21 @@
     DEBUG_INFO("csrr(\"%s\") " ANSI_MAGENTA "(%p)" ANSI_RESET, reg, (void*)x);\
     x;\
 })
+
+// Force csrr to not print debug info
+// Used by csrw, csrs and csrc when printing their own debug info
+#define csrr_nodebug(reg) ({\
+    uint64_t x;\
+    asm volatile ("csrr %0," reg : "=r" (x));\
+    x;\
+})
+
+// Restore includer's DEBUG flag
+#ifdef DEBUG_DEFINED
+    #define DEBUG
+#else
+    #undef DEBUG
+#endif
+#undef DEBUG_DEFINED
 
 #endif /* CYKOS_CSR_H */

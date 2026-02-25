@@ -1,22 +1,24 @@
-# Compiler and Assembler
+# Compiler, Assembler and Linker
 CC = riscv64-unknown-elf-gcc
 AS = riscv64-unknown-elf-as
 
 # C, Assembly and Linker flags
 CFLAGS=-I src/ -I src/libc/ -Wall -Wextra -Werror -mcmodel=medany
 ASFLAGS=
-LDFLAGS = -T src/linker.ld -nostdlib -nostartfiles -nodefaultlibs
+LDFLAGS = -T $(LD) -nostdlib -nostartfiles -nodefaultlibs
 
 # Source files
 C_FILES=$(shell find src/ -name "*.c")
 ASM_FILES=$(shell find src/ -name "*.S")
+LD=src/linker.ld
+LD_BUILDER=src/linker.builder.ld
 
 # Object files
 OBJS=$(C_FILES:src/%.c=obj/%.o) $(ASM_FILES:src/%.S=obj/%.o)
 
 TARGET=kernel.bin
 
-$(TARGET): $(OBJS) src/linker.ld
+$(TARGET): $(OBJS) $(LD)
 	@echo "Linking to $@..."
 	@$(CC) -o $(TARGET) $(OBJS) $(LDFLAGS)
 
@@ -33,6 +35,9 @@ obj/%.o: src/%.S
 	@mkdir -p $(dir $@)
 	@echo "Assembling $@..."
 	@$(AS) $(ASFLAGS) $< -o $@
+
+$(LD): $(LD_BUILDER)
+	@$(CC) -E -P -x c -D PGSIZE=0x1000 $(CFLAGS) $< > $@
 
 run: $(TARGET)
 	@qemu-system-riscv64 -nographic -machine virt -bios none -kernel $(TARGET)
