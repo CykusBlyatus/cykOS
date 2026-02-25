@@ -15,7 +15,7 @@
 #define DEBUG
 #include <auxiliary/debug.h>
 
-DEBUG_PUT(int debug_paging = 1;)
+DEBUG_PUT(int debug_paging = 0;)
 const size_t pgsize = PGSIZE; // for linker.ld
 
 // Defined in linker.ld
@@ -104,11 +104,12 @@ void vminit() {
     pgmap(&kernel_pgdir, (void*)UART0_BASE, (void*)UART0_BASE, PTE_RW);
 
     // PLIC is so big that printing debug for it slows down this function
+    DEBUG_PUT(int debug_paging_ = debug_paging;);
     DEBUG_PUT(debug_paging = 0;)
     DEBUG_INFO("Mapping PLIC (%p-%p)...", (void*)PLIC_BASE, (void*)PLIC_BASE + 0x4000000);
     for (void *addr = (void*)PLIC_BASE; addr < (void*)PLIC_BASE + 0x4000000; addr += PGSIZE)
         pgmap(&kernel_pgdir, addr, addr, PTE_RW);
-    DEBUG_PUT(debug_paging = 1;)
+    DEBUG_PUT(debug_paging = debug_paging_;)
 
     DEBUG_INFO("Mapping SYSCON (%p-%p)...", (void*)SYSCON_ADDR, (void*)SYSCON_ADDR + PGSIZE);
     pgmap(&kernel_pgdir, (void*)SYSCON_ADDR, (void*)SYSCON_ADDR, PTE_RW);
@@ -120,5 +121,5 @@ void vminit() {
         pgmap(&kernel_pgdir, addr, addr, PTE_R);
 
     DEBUG_INFO("Kernel root page table at %p", &kernel_pgdir);
-    csrw("satp", PGMODE | ((uintptr_t)&kernel_pgdir >> PGSHIFT));
+    CSRW("satp", PGMODE | ((uintptr_t)&kernel_pgdir >> PGSHIFT));
 }

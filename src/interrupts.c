@@ -27,8 +27,12 @@ void kernel_trap() {
             switch (irq) {
                 case UART0_IRQ: {
                     DEBUG_INFO("UART0 interrupt");
-                    while (!(UART0_IIR & UART_IIR_NO_INT)) {
-                        switch (UART0_IIR & 0x7) {
+                    while (1) {
+                        uint8_t iir = UART0_IIR;
+                        if (iir & UART_IIR_NO_INT)
+                            break;
+
+                        switch (iir & 0x7) {
                             case UART_IIR_RDA: {
                                 char c = uart_read();
                                 if (c == 27) // ESC
@@ -37,7 +41,7 @@ void kernel_trap() {
                                 break;
                             }
                             default:
-                                DEBUG_WARN("UART0_IIR = %p\n", (void*)(uint64_t)UART0_IIR);
+                                DEBUG_WARN("UART0_IIR = %p\n", (void*)(uint64_t)iir);
                         }
                     }
                     break;
