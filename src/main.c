@@ -9,25 +9,24 @@ extern void trap_handler_s();
 int main();
 
 void start() {
-    csrw("mepc", main); // set "return" address to main
-    csrw("stvec", trap_handler_s);
+    CSRW("mepc", main); // set "return" address to main
+    CSRW("stvec", trap_handler_s);
 
     // set "previous" privilege mode and enable interrupts
-    csrc("mstatus", CSR_MSTATUS_MPP);
-    csrs("mstatus", CSR_MSTATUS_MPP_S);
+    CSRC("mstatus", CSR_STATUS_MPP);
+    CSRS("mstatus", CSR_STATUS_MPP_S);
 
-    csrs("sstatus", CSR_SSTATUS_SIE);
+    CSRS("sstatus", CSR_STATUS_SIE);
 
-    csrw("medeleg", 0xffff); // delegate all exceptions to S-mode
-    csrw("mideleg", 0xffff); // delegate all interrupts to S-mode
-    csrs("mie", CSR_MIE_SSIE | CSR_MIE_STIE | CSR_MIE_SEIE | CSR_MIE_MEIE);
-    csrs("sie", CSR_SIE_SOFTWARE | CSR_SIE_TIMER | CSR_SIE_EXTERNAL);
+    CSRW("medeleg", 0xffff); // delegate all exceptions to S-mode
+    CSRW("mideleg", 0xffff); // delegate all interrupts to S-mode
+    CSRS("mie", CSR_IEIP_SSI | CSR_IEIP_STI | CSR_IEIP_SEI); // enable all S-mode interrupts
+    CSRS("sie", CSR_IEIP_SSI | CSR_IEIP_STI | CSR_IEIP_SEI); // enable all S-mode interrupts
 
-    // configure Physical Memory Protection to give supervisor mode
-    // access to all of physical memory.
-    csrw("pmpaddr0", 0x3fffffffffffff);
-    csrw("pmpcfg0", 0xf);
-    csrw("satp", 0); // disable paging
+    // Configure physical memory protection to give supervisor mode access to all of physical memory.
+    CSRW("pmpaddr0", 0x3fffffffffffff);
+    CSRW("pmpcfg0", 0xf);
+    CSRW("satp", 0); // disable paging
 
     stimer_init();
 

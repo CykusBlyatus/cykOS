@@ -9,28 +9,39 @@
 #include "timer.h"
 #include "syscon.h"
 #include "uart.h"
+#include "uart_macros.h"
 
 void kernel_trap() {
     DEBUG_PRINTF("called");
 
     __attribute__((unused)) uint64_t
-        sepc = csrr("sepc"),
-        sstatus = csrr("sstatus"),
-        scause = csrr("scause"),
-        sip = csrr("sip");
+        sepc = CSRR("sepc"),
+        sstatus = CSRR("sstatus"),
+        scause = CSRR("scause"),
+        sip = CSRR("sip");
 
     switch (scause) {
-        case CSR_MCAUSE_SEI: {
+        case CSR_CAUSE_SEI: {
             DEBUG_INFO("external interrupt");
             uint32_t irq = plic_claim(HART_CONTEXT());
             switch (irq) {
-                case UART0_IRQ:
-                    DEBUG_INFO("UART interrupt");
-                    char c = uart_read();
-                    if (c == 27) // ESC
-                        poweroff();
-                    printf("Character received: '%c' (%d)\n", c, c);
+                case UART0_IRQ: {
+                    DEBUG_INFO("UART0 interrupt");
+                    while (!(UART0_IIR & UART_IIR_NO_INT)) {
+                        switch (UART0_IIR & 0x7) {
+                            case UART_IIR_RDA: {
+                                char c = uart_read();
+                                if (c == 27) // ESC
+                                    poweroff();
+                                DEBUG_PRINTF("Received character %d\n", (int)c);
+                                break;
+                            }
+                            default:
+                                DEBUG_WARN("UART0_IIR = %p\n", (void*)(uint64_t)UART0_IIR);
+                        }
+                    }
                     break;
+                }
                 default:
                     DEBUG_WARN("irq = %d", irq);
             }
@@ -40,14 +51,14 @@ void kernel_trap() {
 
             break;
         }
-        case CSR_MCAUSE_STI: {
+        case CSR_CAUSE_STI: {
             DEBUG_INFO("timer interrupt");
-            uint64_t stimecmp = csrr("stimecmp");
+            uint64_t stimecmp = CSRR("stimecmp");
             DEBUG_PRINTF("mtime = %p, stimecmp = %p", (void*)mtime, (void*)stimecmp);
-            csrw("stimecmp", stimecmp + 10000000);
+            CSRW("stimecmp", stimecmp + 10000000);
             break;
         }
-        case CSR_MCAUSE_SSI: {
+        case CSR_CAUSE_SSI: {
             DEBUG_INFO("software interrupt (ignore for now)");
             break;
         }

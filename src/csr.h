@@ -2,6 +2,7 @@
  * @file csr.h
  * @author CykusBlyatus
  * @brief Contains multiple macros related to CSRs (Control/Status Registers)
+ * @see https://docs.riscv.org/reference/isa/_attachments/riscv-privileged.pdf
  */
 
 #ifndef CYKOS_CSR_H
@@ -16,150 +17,106 @@
 #endif
 
 #include <stdint.h>
-#include "utils.h"
 
-// Machine Status Register (mstatus)
+// Status Register (mstatus, sstatus, etc.)
 
-#define CSR_MSTATUS_UIE     BIT(0) // User Interrupt Enable
-#define CSR_MSTATUS_SIE     BIT(1) // Supervisor Interrupt Enable
-#define CSR_MSTATUS_MIE     BIT(3) // Machine Interrupt Enable
+#define CSR_STATUS_UIE     (1L << 0) // User Interrupt Enable
+#define CSR_STATUS_SIE     (1L << 1) // Supervisor Interrupt Enable
+#define CSR_STATUS_MIE     (1L << 3) // Machine Interrupt Enable
 
-#define CSR_MSTATUS_UPIE    BIT(4) // User Previous Interrupt Enable
-#define CSR_MSTATUS_SPIE    BIT(5) // Supervisor Previous Interrupt Enable
-#define CSR_MSTATUS_MPIE    BIT(7) // Machine Previous Interrupt Enable
+#define CSR_STATUS_UPIE    (1L << 4) // User Previous Interrupt Enable
+#define CSR_STATUS_SPIE    (1L << 5) // Supervisor Previous Interrupt Enable
+#define CSR_STATUS_MPIE    (1L << 7) // Machine Previous Interrupt Enable
 
-#define CSR_MSTATUS_SPP     BIT(8) // Supervisor Previous Privilege (0 = user, 1 = supervisor)
+#define CSR_STATUS_SPP     (1L << 8) // Supervisor Previous Privilege (0 = user, 1 = supervisor)
 
-#define CSR_MSTATUS_MPP   (3L << 11) // Machine Previous Privilege (0 = user, 1 = supervisor, 11 = machine)
-#define CSR_MSTATUS_MPP_M (3L << 11) // previous privilege = machine
-#define CSR_MSTATUS_MPP_S (1L << 11) // previous privilege = supervisor
-#define CSR_MSTATUS_MPP_U          0 // previous privilege = user
+#define CSR_STATUS_MPP   (3L << 11) // Machine Previous Privilege (0 = user, 1 = supervisor, 11 = machine)
+#define CSR_STATUS_MPP_M (3L << 11) // previous privilege = machine
+#define CSR_STATUS_MPP_S (1L << 11) // previous privilege = supervisor
+#define CSR_STATUS_MPP_U          0 // previous privilege = user
 
-#define CSR_MSTATUS_FS (3L << 13) // Floating-point Status (or something)
-#define CSR_MSTATUS_XS (3L << 15) // eXtra Status (or something)
+#define CSR_STATUS_FS (3L << 13) // Floating-point Status (or something)
+#define CSR_STATUS_XS (3L << 15) // eXtra Status (or something)
 
-#define CSR_MSTATUS_MPRV    BIT(17) // Modify PRiVilege (if 1, memory access is restricted by the previous privilege, MPP)
-#define CSR_MSTATUS_SUM     BIT(18) // Supervisor User Memory access (if 1, accesses to pages that are accessible by U-mode are permitted) 
-#define CSR_MSTATUS_MXR     BIT(19) // Make eXecutable Readable (if 1, loads from pages marked executable will succeed)
-#define CSR_MSTATUS_TVM     BIT(20) // Trap Virtual Memory
-#define CSR_MSTATUS_TW      BIT(21) // Timeout Wait
-#define CSR_MSTATUS_TSR     BIT(22) // Trap SRET
+#define CSR_STATUS_MPRV    (1L << 17) // Modify PRiVilege (if 1, memory access is restricted by the previous privilege, MPP)
+#define CSR_STATUS_SUM     (1L << 18) // Supervisor User Memory access (if 1, accesses to pages that are accessible by U-mode are permitted)
+#define CSR_STATUS_MXR     (1L << 19) // Make eXecutable Readable (if 1, loads from pages marked executable will succeed)
+#define CSR_STATUS_TVM     (1L << 20) // Trap Virtual Memory
+#define CSR_STATUS_TW      (1L << 21) // Timeout Wait
+#define CSR_STATUS_TSR     (1L << 22) // Trap SRET
 
-#define CSR_MSTATUS_UXL     (3L << 32) // User XLEN (1 = 32, 2 = 64, 3 = 128)
-#define CSR_MSTATUS_SXL     (3L << 34) // Supervisor XLEN (1 = 32, 2 = 64, 3 = 128)
+#define CSR_STATUS_UXL     (3L << 32) // User XLEN (1 = 32, 2 = 64, 3 = 128)
+#define CSR_STATUS_SXL     (3L << 34) // Supervisor XLEN (1 = 32, 2 = 64, 3 = 128)
 
-#define CSR_MSTATUS_SD      BIT(__riscv_xlen - 1) // State Dirty (summarizes whether either FS or XS field is dirty, being set to 1 if any is dirty)
-
-/////////////////////////////////////////////////////
-
-// Supervisor Status Register (sstatus)
-
-#define CSR_SSTATUS_UIE     BIT(0) // User Interrupt Enable
-#define CSR_SSTATUS_SIE     BIT(1) // Supervisor Interrupt Enable
-
-#define CSR_SSTATUS_UPIE    BIT(4) // User Previous Interrupt Enable
-#define CSR_SSTATUS_SPIE    BIT(5) // Supervisor Previous Interrupt Enable
-
-#define CSR_SSTATUS_SPP     BIT(8) // Supervisor Previous Privilege (0 = user, 1 = supervisor)
-
-#define CSR_SSTATUS_FS      (3L << 13) // Floating-point Status (or something)
-#define CSR_SSTATUS_XS      (3L << 15) // eXtra Status (or something)
-
-#define CSR_SSTATUS_SUM     BIT(18) // Supervisor User Memory access (if 1, accesses to pages that are accessible by U-mode are permitted) 
-#define CSR_SSTATUS_MXR     BIT(19) // Make eXecutable Readable (if 1, loads from pages marked executable will succeed)
-
-#define CSR_SSTATUS_UXL     (3L << 32) // User XLEN (1 = 32, 2 = 64, 3 = 128)
-
-#define CSR_SSTATUS_SD      BIT(__riscv_xlen - 1) // State Dirty (summarizes whether either FS or XS field is dirty, being set to 1 if any is dirty)
+#define CSR_STATUS_SD      (1L << (__riscv_xlen - 1)) // State Dirty (summarizes whether either FS or XS field is dirty, being set to 1 if any is dirty)
 
 /////////////////////////////////////////////////////
 
-// Machine Trap-Vector Base-Address Register (mtvec)
+// Trap-Vector Base-Address Register (mtvec, stvec, etc.)
 
-#define CSR_MTVEC_MODE 3        // mask to get the mtvec mode (0 = direct (interrupts set pc to BASE), 1 = vectored (interrupts set pc to BASE+4*cause), 2+ = reserved)
-#define CSR_MTVEC_DIRECT 0      // all traps set pc to mtvec
-#define CSR_MTVEC_VECTORED 1    // interrupts set pc to mtvec + 4 * cause
+#define CSR_TVEC_MODE_MASK 3   // mask to get the tvec mode
+#define CSR_TVEC_DIRECT 0      // all traps set pc to tvec
+#define CSR_TVEC_VECTORED 1    // interrupts set pc to tvec + 4 * cause
 
 /////////////////////////////////////////////////////
 
-//  Machine Cause Register (mcause)
+// Interrupt/Exception Cause Register (mcause, scause, etc.)
 
-#define CSR_MCAUSE_INT(code) (BIT(__riscv_xlen - 1) | code) // merges the interrupt bit with the interrupt code
+#define CSR_CAUSE_INT(code) ((1L << (__riscv_xlen - 1)) | (code)) // merges the interrupt bit with the interrupt code
 
 // Interrupt Codes
 
-#define CSR_MCAUSE_USI CSR_MCAUSE_INT(0)  // User        Software Interrupt
-#define CSR_MCAUSE_SSI CSR_MCAUSE_INT(1)  // Supervisor  Software Interrupt
-//efine CSR_MCAUSE_HSI CSR_MCAUSE_INT(2)  // Hypervisor  Software Interrupt
-#define CSR_MCAUSE_MSI CSR_MCAUSE_INT(3)  // Machine     Software Interrupt
-#define CSR_MCAUSE_UTI CSR_MCAUSE_INT(4)  // User        Timer Interrupt
-#define CSR_MCAUSE_STI CSR_MCAUSE_INT(5)  // Supervisor  Timer Interrupt
-//efine CSR_MCAUSE_HTI CSR_MCAUSE_INT(6)  // Hypervisor  Timer Interrupt
-#define CSR_MCAUSE_MTI CSR_MCAUSE_INT(7)  // Machine     Timer Interrupt
-#define CSR_MCAUSE_UEI CSR_MCAUSE_INT(8)  // User        External Interrupt
-#define CSR_MCAUSE_SEI CSR_MCAUSE_INT(9)  // Supervisor  External Interrupt
-//efine CSR_MCAUSE_HEI CSR_MCAUSE_INT(10) // Hypervisor  External Interrupt
-#define CSR_MCAUSE_MEI CSR_MCAUSE_INT(11) // Machine     External Interrupt
+#define CSR_CAUSE_USI CSR_CAUSE_INT(0)  // User        Software Interrupt
+#define CSR_CAUSE_SSI CSR_CAUSE_INT(1)  // Supervisor  Software Interrupt
+#define CSR_CAUSE_HSI CSR_CAUSE_INT(2)  // Hypervisor  Software Interrupt
+#define CSR_CAUSE_MSI CSR_CAUSE_INT(3)  // Machine     Software Interrupt
+#define CSR_CAUSE_UTI CSR_CAUSE_INT(4)  // User        Timer Interrupt
+#define CSR_CAUSE_STI CSR_CAUSE_INT(5)  // Supervisor  Timer Interrupt
+#define CSR_CAUSE_HTI CSR_CAUSE_INT(6)  // Hypervisor  Timer Interrupt
+#define CSR_CAUSE_MTI CSR_CAUSE_INT(7)  // Machine     Timer Interrupt
+#define CSR_CAUSE_UEI CSR_CAUSE_INT(8)  // User        External Interrupt
+#define CSR_CAUSE_SEI CSR_CAUSE_INT(9)  // Supervisor  External Interrupt
+#define CSR_CAUSE_HEI CSR_CAUSE_INT(10) // Hypervisor  External Interrupt
+#define CSR_CAUSE_MEI CSR_CAUSE_INT(11) // Machine     External Interrupt
 
 // Exception Codes
 
-#define CSR_MCAUSE_INSTR_MISALIGN   0  // Instruction address misaligned
-#define CSR_MCAUSE_INSTR_ACCESS     1  // Instruction access fault
-#define CSR_MCAUSE_INSTR_ILLEGAL    2  // Illegal instruction
-#define CSR_MCAUSE_BREAKPOINT       3  // Breakpoint
-#define CSR_MCAUSE_LOAD_MISALIGN    4  // Load address misaligned
-#define CSR_MCAUSE_LOAD_ACCESS      5  // Load access fault
-#define CSR_MCAUSE_STORE_MISALIGN   6  // Store/AMO address misaligned
-#define CSR_MCAUSE_STORE_ACCESS     7  // Store/AMO access fault
-#define CSR_MCAUSE_ECALL_U          8  // Environment call from U-mode
-#define CSR_MCAUSE_ECALL_S          9  // Environment call from S-mode
-#define CSR_MCAUSE_ECALL_M          11 // Environment call from M-mode
-#define CSR_MCAUSE_INSTR_PAGE       12 // Instruction page fault
-#define CSR_MCAUSE_LOAD_PAGE        13 // Load page fault
-#define CSR_MCAUSE_STORE_PAGE       15 // Store/AMO page fault
+#define CSR_CAUSE_INSTR_MISALIGN   0  // Instruction address misaligned
+#define CSR_CAUSE_INSTR_ACCESS     1  // Instruction access fault
+#define CSR_CAUSE_INSTR_ILLEGAL    2  // Illegal instruction
+#define CSR_CAUSE_BREAKPOINT       3  // Breakpoint
+#define CSR_CAUSE_LOAD_MISALIGN    4  // Load address misaligned
+#define CSR_CAUSE_LOAD_ACCESS      5  // Load access fault
+#define CSR_CAUSE_STORE_MISALIGN   6  // Store/AMO address misaligned
+#define CSR_CAUSE_STORE_ACCESS     7  // Store/AMO access fault
+#define CSR_CAUSE_ECALL_U          8  // Environment call from U-mode
+#define CSR_CAUSE_ECALL_S          9  // Environment call from S-mode
+#define CSR_CAUSE_ECALL_H          10 // Environment call from H-mode
+#define CSR_CAUSE_ECALL_M          11 // Environment call from M-mode
+#define CSR_CAUSE_INSTR_PAGE       12 // Instruction page fault
+#define CSR_CAUSE_LOAD_PAGE        13 // Load page fault
+#define CSR_CAUSE_STORE_PAGE       15 // Store/AMO page fault
 
 /////////////////////////////////////////////////////
 
-// Machine Interrupt Enable (mie)
+// Interrupt Enable/Pending (mie/mip, sie/sip, etc.)
 
-#define CSR_MIE_MEIE BIT(11) // Machine    External Interrupts Enable
-//efine CSR_MIE_HEIE BIT(10) // Hypervisor External Interrupts Enable
-#define CSR_MIE_SEIE BIT(9)  // Supervisor External Interrupts Enable
-#define CSR_MIE_UEIE BIT(8)  // User       External Interrupts Enable
-#define CSR_MIE_MTIE BIT(7)  // Machine    Timer Interrupts Enable
-//efine CSR_MIE_HSIE BIT(6)  // Hypervisor Timer Interrupts Enable
-#define CSR_MIE_STIE BIT(5)  // Supervisor Timer Interrupts Enable
-#define CSR_MIE_UTIE BIT(4)  // User       Timer Interrupts Enable
-#define CSR_MIE_MSIE BIT(3)  // Machine    Software Interrupts Enable
-//efine CSR_MIE_HSIE BIT(2)  // Hypervisor Software Interrupts Enable
-#define CSR_MIE_SSIE BIT(1)  // Supervisor Software Interrupts Enable
-#define CSR_MIE_USIE BIT(0)  // User       Software Interrupts Enable
-
-/////////////////////////////////////////////////////
-
-// Supervisor Interrupt Enable (sie)
-#define CSR_SIE_EXTERNAL    BIT(9)
-#define CSR_SIE_TIMER       BIT(5)
-#define CSR_SIE_SOFTWARE    BIT(1)
+#define CSR_IEIP_MEI (1L << 11) // Machine    External Interrupts
+#define CSR_IEIP_HEI (1L << 10) // Hypervisor External Interrupts
+#define CSR_IEIP_SEI (1L << 9)  // Supervisor External Interrupts
+#define CSR_IEIP_UEI (1L << 8)  // User       External Interrupts
+#define CSR_IEIP_MTI (1L << 7)  // Machine    Timer Interrupts
+#define CSR_IEIP_HTI (1L << 6)  // Hypervisor Timer Interrupts
+#define CSR_IEIP_STI (1L << 5)  // Supervisor Timer Interrupts
+#define CSR_IEIP_UTI (1L << 4)  // User       Timer Interrupts
+#define CSR_IEIP_MSI (1L << 3)  // Machine    Software Interrupts
+#define CSR_IEIP_HSI (1L << 2)  // Hypervisor Software Interrupts
+#define CSR_IEIP_SSI (1L << 1)  // Supervisor Software Interrupts
+#define CSR_IEIP_USI (1L << 0)  // User       Software Interrupts
 
 /////////////////////////////////////////////////////
 
-// Machine Interrupt Pending (mip)
 
-#define CSR_MIP_MEIP BIT(11) // Machine    External Interrupt Pending
-//efine CSR_MIP_HEIP BIT(10) // Hypervisor External Interrupt Pending
-#define CSR_MIP_SEIP BIT(9)  // Supervisor External Interrupt Pending
-#define CSR_MIP_UEIP BIT(8)  // User       External Interrupt Pending
-#define CSR_MIP_MTIP BIT(7)  // Machine    Timer Interrupt Pending
-//efine CSR_MIP_HSIP BIT(6)  // Hypervisor Timer Interrupt Pending
-#define CSR_MIP_STIP BIT(5)  // Supervisor Timer Interrupt Pending
-#define CSR_MIP_UTIP BIT(4)  // User       Timer Interrupt Pending
-#define CSR_MIP_MSIP BIT(3)  // Machine    Software Interrupt Pending
-//efine CSR_MIP_HSIP BIT(2)  // Hypervisor Software Interrupt Pending
-#define CSR_MIP_SSIP BIT(1)  // Supervisor Software Interrupt Pending
-#define CSR_MIP_USIP BIT(0)  // User       Software Interrupt Pending
-
-/////////////////////////////////////////////////////
 
 // Control/Status Register (CSR) instructions
 
@@ -167,28 +124,28 @@
 #include <auxiliary/debug.h>
 
 // CSR write
-#define csrw(reg,val) do {\
+#define CSRW(reg,val) do {\
     uint64_t x = (uint64_t) val;\
     DEBUG_INFO("csrw(\"%s\", %s " ANSI_MAGENTA "(%p)" ANSI_RESET ")", reg, #val, (void*)x);\
     asm volatile ("csrw " reg ",%0" : : "r" (x));\
 } while(0)
 
 // CSR set bits
-#define csrs(reg,bits) do {\
+#define CSRS(reg,bits) do {\
     uint64_t x = (uint64_t) bits;\
     DEBUG_INFO("csrs(\"%s\", %s " ANSI_MAGENTA "(%p)" ANSI_RESET ")", reg, #bits, (void*)x);\
     asm volatile ("csrs " reg ",%0" : : "r" (x));\
 } while(0)
 
 // CSR clear bits
-#define csrc(reg,bits) do {\
+#define CSRC(reg,bits) do {\
     uint64_t x = (uint64_t) bits;\
     DEBUG_INFO("csrc(\"%s\", %s " ANSI_MAGENTA "(%p)" ANSI_RESET ")", reg, #bits, (void*)x);\
     asm volatile ("csrc " reg ",%0" : : "r" (x));\
 } while(0)
 
 // CSR read
-#define csrr(reg) ({\
+#define CSRR(reg) ({\
     uint64_t x;\
     asm volatile ("csrr %0," reg : "=r" (x));\
     DEBUG_INFO("csrr(\"%s\") " ANSI_MAGENTA "(%p)" ANSI_RESET, reg, (void*)x);\

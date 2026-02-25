@@ -3,11 +3,13 @@
 
 #include <stdint.h>
 
-uint64_t *mtimecmp_();
-#define mtimecmp (*mtimecmp_())
+#define MTIMER_ADDR 0x2000000
 
-uint64_t mtime_();
-#define mtime mtime_()
+#define mtimecmp_ ((uint64_t*)(MTIMER_ADDR + 0x4000))
+#define mtimecmp (*mtimecmp_)
+
+#define mtime_ ((uint64_t*)(MTIMER_ADDR + 0xBFF8))
+#define mtime (*mtime_)
 
 void mtimer_init();
 void stimer_init();
