@@ -1,3 +1,6 @@
+#define DEBUG
+#include <auxiliary/debug.h>
+
 #include <stdio.h>
 #include "uart.h"
 #include "syscon.h"
@@ -5,6 +8,7 @@
 #include "csr.h"
 #include "timer.h"
 #include "paging.h"
+#include <virtio/virtio.h>
 
 extern void trap_handler_s();
 int main();
@@ -39,13 +43,17 @@ void start() {
 int main() {
     printf("%s called\n", __func__);
 
+    CSRS("sstatus", CSR_STATUS_FS_INIT); // allow floating-point operations
+
+    pginit();
+
     //*
     uart_init();
     plic_set_priority(UART0_IRQ, 1);
     plic_enable_interrupt(HART_CONTEXT(), UART0_IRQ);
     //*/
 
-    vminit();
+    disk0_init();
 
     /*
     DEBUG_SUCCESS("Entering uart_read() loop!");

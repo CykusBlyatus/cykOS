@@ -6,3 +6,4 @@ obj/
 *.a
 .clangd
 *.ld
+*.img

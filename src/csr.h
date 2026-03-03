@@ -39,7 +39,12 @@
 #define CSR_STATUS_MPP_S (1L << 11) // previous privilege = supervisor
 #define CSR_STATUS_MPP_U          0 // previous privilege = user
 
-#define CSR_STATUS_FS (3L << 13) // Floating-point Status (or something)
+#define CSR_STATUS_FS (3L << 13)        // Floating-point Status
+#define CSR_STATUS_FS_OFF   0           // Floating-point operations off
+#define CSR_STATUS_FS_INIT  (1L << 13)  // Floating-point registers uninitialized
+#define CSR_STATUS_FS_CLEAN (2L << 13)  // Floating-point registers initialized but not modified
+#define CSR_STATUS_FS_DIRTY (3L << 13)  // Floating-point registers modified
+
 #define CSR_STATUS_XS (3L << 15) // eXtra Status (or something)
 
 #define CSR_STATUS_MPRV    (1L << 17) // Modify PRiVilege (if 1, memory access is restricted by the previous privilege, MPP)
@@ -134,10 +139,10 @@
     #define CSR_SATP_PPN(satp) ((satp) & 0xfffffffffff) // Physical Page Number (Physical Address divided by PGSIZE)
     #define CSR_SATP_ASID(satp) ((satp) & (0xffff << 44)) // Address Space ID
     #define CSR_SATP_MODE(satp) ((satp) & (0xf << 60)) // Paging Mode
-    #define CSR_SATP_SV39 (8ull << 60)  // Page-based 39-bit virtual addressing
-    #define CSR_SATP_SV48 (9ull << 60)  // Page-based 48-bit virtual addressing
-    #define CSR_SATP_SV57 (10ull << 60) // Page-based 57-bit virtual addressing
-    #define CSR_SATP_SV64 (11ull << 60) // Reserved for page-based 64-bit virtual addressing
+    #define CSR_SATP_SV39 (8L << 60)  // Page-based 39-bit virtual addressing
+    #define CSR_SATP_SV48 (9L << 60)  // Page-based 48-bit virtual addressing
+    #define CSR_SATP_SV57 (10L << 60) // Page-based 57-bit virtual addressing
+    #define CSR_SATP_SV64 (11L << 60) // Reserved for page-based 64-bit virtual addressing
 #endif
 
 /////////////////////////////////////////////////////

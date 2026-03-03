@@ -11,9 +11,17 @@
 // to get addresses
 #include "plic.h"
 #include "uart_macros.h"
+#include <virtio/blk.h>
 
 #define DEBUG
 #include <auxiliary/debug.h>
+
+#define PROTECT_FREE_PAGES
+
+#define TLB_FLUSH_VA(va, asid)  asm volatile ("sfence.vma %0, %1" :: "r"(va),"r"(asid) : "memory")
+#define TLB_FLUSH_AS(asid)      asm volatile ("sfence.vma x0, %0" :: "r"(asid) : "memory")
+#define TLB_FLUSH_VA_GLOBAL(va) asm volatile ("sfence.vma %0, x0" :: "r"(va) : "memory")
+#define TLB_FLUSH_ALL()         asm volatile ("sfence.vma x0, x0" ::: "memory")
 
 DEBUG_PUT(int debug_paging = 0;)
 const size_t pgsize = PGSIZE; // for linker.ld
@@ -31,29 +39,93 @@ extern char
     kernel_bss_end[],
     kernel_end[];
 
+typedef struct pgtable {
+    pte_t entries[PGENTRIES];
+} pgtable_t __attribute__((aligned(PGSIZE)));
 pgtable_t kernel_pgdir;
 
-// Node from a linked list of pages
+// Node from a linked list of free pages
 typedef struct pgnode {
     struct pgnode *next;
+    #ifdef PROTECT_FREE_PAGES
+        pte_t *pte_next;
+    #endif
 } pgnode_t;
 
 static struct {
     pgnode_t *freelist; // Linked list of free pages
-} kmem;
+    #ifdef PROTECT_FREE_PAGES
+        pte_t *pte_head;
+    #endif
+} kmem; // same structure as pgnode_t but logically different since kmem is not a page
 
-// Basically a copy of https://github.com/mit-pdos/xv6-riscv/blob/de247db5e6384b138f270e0a7c745989b5a9c23b/kernel/kalloc.c#L69
 void *pgalloc() {
     pgnode_t *node = kmem.freelist;
-    if (node)
-        kmem.freelist = node->next;
+    if (!node) {
+        DEBUG_ERROR("Ran out of memory\n");
+        return NULL;
+    }
+    #ifdef PROTECT_FREE_PAGES
+        *kmem.pte_head |= PTE_RW | PTE_V;
+        kmem.pte_head = node->pte_next;
+    #endif
+    kmem.freelist = node->next;
     DEBUG_PUT(if (debug_paging) DEBUG_INFO("Allocated page at %p", node);)
     return node;
 }
 
-// Basically a copy of https://github.com/mit-pdos/xv6-riscv/blob/de247db5e6384b138f270e0a7c745989b5a9c23b/kernel/vm.c#L144
-int pgmap(pgtable_t *pgdir, void *pa, void *va, int perm) {
-    if ((uintptr_t)va % PGSIZE != 0) {
+void pgfree(pgtable_t *root_pgdir, void *va) {
+    pgtable_t *pgdir = root_pgdir;
+    pte_t *pte;
+    for (int level = PGLEVELS(PGMODE) ;; --level) {
+        pte = &pgdir->entries[PX(level, va)];
+        if (!(*pte & PTE_V)) {
+            DEBUG_ERROR("Attempted to free unmapped virtual address %p", va);
+            poweroff();
+        }
+
+        if (level == 0)
+            break;
+
+        if (*pte & PTE_RWX) {
+            DEBUG_ERROR("Superpages not supported\n");
+            poweroff();
+        }
+        pgdir = (pgtable_t*)PTE2PA(*pte);
+    }
+
+    if (root_pgdir == &kernel_pgdir) {
+        #ifdef PROTECT_FREE_PAGES
+            if (!(*pte & PTE_RWX)) {
+                DEBUG_ERROR("Attempted page double-free at virtual address %p", va);
+                poweroff();
+            }
+            *pte &= ~PTE_RWX;
+        #else
+            *pte &= ~PTE_X;
+            *pte |= PTE_RW;
+        #endif
+    } else {
+        *pte = 0;
+        DEBUG_ERROR("Multiple page tables not supported yet");
+        poweroff();
+    }
+
+    kmem.freelist = (pgnode_t*)PTE2PA(*pte);
+    #ifdef PROTECT_FREE_PAGES
+        kmem.pte_head = pte;
+    #endif
+
+    TLB_FLUSH_VA(va, 0);
+}
+
+pte_t* pgmap(pgtable_t *pgdir, void *pa, void *va, u16 flags) {
+    if (pgdir != &kernel_pgdir) {
+        DEBUG_ERROR("Multiple page tables not supported yet");
+        poweroff();
+    }
+
+    if (((uptr)va & (PGSIZE-1)) != 0) {
         DEBUG_ERROR("va (%p) %% PGSIZE (%x) != 0\n", va, PGSIZE);
         poweroff(); // die
     }
@@ -61,26 +133,30 @@ int pgmap(pgtable_t *pgdir, void *pa, void *va, int perm) {
     DEBUG_PUT(if (debug_paging) DEBUG_INFO("Mapping %p to %p...", va, pa);)
 
     for (int level = PGLEVELS(PGMODE); level > 0; --level) {
-        uintptr_t *pte = &pgdir->entries[PX(level, va)];
+        pte_t *pte = &pgdir->entries[PX(level, va)];
         if(*pte & PTE_V) {
             pgdir = (void*)PTE2PA(*pte);
         } else {
-            if ((pgdir = pgalloc()) == NULL)
-                return -1;
-            memset(pgdir, 0, PGSIZE);
+            if ((pgdir = (pgtable_t*)kmem.freelist) == NULL) {
+                DEBUG_ERROR("Ran out of memory");
+                return NULL;
+            }
+            *(pgnode_t*)&kmem = *(pgnode_t*)pgdir;
+            __builtin_memset(__builtin_assume_aligned(pgdir, PGSIZE), 0, PGSIZE);
             *pte = PA2PTE(pgdir) | PTE_V;
+            #ifdef PROTECT_FREE_PAGES
+                pgmap(&kernel_pgdir, pgdir, pgdir, PTE_RW);
+            #endif
         }
         DEBUG_PUT(if (debug_paging) DEBUG_INFO("PTE = %p, pgdir = %p", (void*)*pte, pgdir);)
     }
 
-    uintptr_t *pte = &pgdir->entries[PX(0, va)];
-    *pte = PA2PTE(pa) | perm | PTE_V;
-    return 0;
+    pte_t *pte = &pgdir->entries[PX(0, va)];
+    *pte = PA2PTE(pa) | flags | PTE_V;
+    return pte;
 }
 
-void vminit() {
-    DEBUG_INFO("called");
-
+void pginit() {
     DEBUG_INFO("Marking all pages outisde kernel as free...");
     for (void *addr = kernel_end; addr < (void*)PHYSTOP; addr += PGSIZE) {
         pgnode_t *node = addr;
@@ -120,6 +196,20 @@ void vminit() {
     for (void *addr = clint; addr < clint + 0x10000; addr += PGSIZE)
         pgmap(&kernel_pgdir, addr, addr, PTE_R);
 
+    #ifdef PROTECT_FREE_PAGES
+    {
+        for (pgnode_t *node = (pgnode_t*)&kmem; node->next != NULL; node = node->next) {
+            node->pte_next = pgmap(&kernel_pgdir, node->next, node->next, 0);
+            *node->pte_next &= ~PTE_V;
+        }
+    }
+    #else
+    {
+        for (void *addr = kernel_end; addr < (void*)PHYSTOP; addr += PGSIZE)
+            pgmap(&kernel_pgdir, addr, addr, PTE_RW);
+    }
+    #endif
+
     DEBUG_INFO("Kernel root page table at %p", &kernel_pgdir);
-    CSRW("satp", PGMODE | ((uintptr_t)&kernel_pgdir >> PGSHIFT));
+    CSRW("satp", PGMODE | ((uptr)&kernel_pgdir >> PGSHIFT));
 }

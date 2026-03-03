@@ -30,7 +30,15 @@ int puts(const char *s) {
     return 0;
 }
 
-// Source: https://wiki.osdev.org/RISC-V_Meaty_Skeleton_with_QEMU_virt_board#src/uart/uart.c
+#define MAXCHARS_U32 9
+#define MAXCHARS_U64 20
+#define MAXCHARS_U128 39
+
+#define MAXCHARS_LLU (sizeof(unsigned long long) == 4 ? MAXCHARS_U32 : sizeof(unsigned long long) == 8 ? MAXCHARS_U64 : MAXCHARS_U128)
+
+// TODO: make format specifiers less shitty by using %u32, %i32, %u64 and %i64
+
+// Extended implementation of https://wiki.osdev.org/RISC-V_Meaty_Skeleton_with_QEMU_virt_board#src/uart/uart.c
 // Limited version of vprintf() which only supports the following specifiers:
 //
 // - d/i: Signed decimal integer
@@ -41,6 +49,8 @@ int puts(const char *s) {
 // - c: Character
 // - s: String of characters
 // - p: Pointer address
+// - llu: Long long unsigned
+// - f: float (only has a precision of 6 digits)
 // - %: Literal '%'
 //
 // None of the sub-specifiers are supported for the sake of simplicity.
@@ -100,6 +110,43 @@ int vprintf(const char *format, va_list arg) {
                 }
                 break;
 
+                case 'l':
+                {
+                    switch (*++format) {
+                        case 0: return 0;
+                        case 'l':
+                        {
+                            switch (*++format) {
+                                case 0: return 0;
+                                case 'u':
+                                {
+                                    long long unsigned n = va_arg(arg, long long unsigned);
+                                    char lsh = '0' + n % 10;
+                                    n /= 10;
+                                    char buf[MAXCHARS_LLU];
+                                    char *p_buf = buf;
+                                    while (n) {
+                                        *p_buf++ = '0' + n % 10;
+                                        n /= 10;
+                                    }
+                                    while (p_buf != buf)
+                                        putchar(*--p_buf);
+                                    putchar(lsh);
+                                    break;
+                                }
+                                default:
+                                    prints("%ll");
+                                    putchar(*format);
+                            }
+                            break;
+                        }
+                        default:
+                            prints("%l");
+                            putchar(*format);
+                    }
+                }
+                break;
+
                 case 'o':
                 {
                     unsigned n = va_arg(arg, unsigned);
@@ -148,6 +195,47 @@ int vprintf(const char *format, va_list arg) {
                     while (p_buf != buf)
                         putchar(toupper(*--p_buf));
                     putchar(toupper(lsh));
+                }
+                break;
+
+                case 'f':
+                {
+                    double x = va_arg(arg, double);
+                    if (x < 0)
+                        putchar('-');
+
+                    // NOTE: only 6-digit precision
+                    long long unsigned left = x, right = 1000000*(x-left) + 0.5;
+
+                    char lsh = '0' + left % 10;
+                    left /= 10;
+                    char buf[MAXCHARS_LLU];
+                    char *p_buf = buf;
+                    while (left) {
+                        *p_buf++ = '0' + left % 10;
+                        left /= 10;
+                    }
+
+                    while (p_buf != buf)
+                        putchar(*--p_buf);
+                    putchar(lsh);
+                    putchar('.');
+
+                    if (right == 0) {
+                        putchar('0');
+                    } else {
+                        p_buf = buf;
+                        char *p_end = buf;
+                        while (right) {
+                            *p_buf = '0' + right % 10;
+                            if (*p_buf == '0' && p_buf == p_end)
+                                ++p_end;
+                            right /= 10;
+                            ++p_buf;
+                        }
+                        while (p_buf != p_end)
+                            putchar(*--p_buf);
+                    }
                 }
                 break;
 

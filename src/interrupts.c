@@ -12,7 +12,7 @@
 #include "uart_macros.h"
 
 void kernel_trap() {
-    DEBUG_PRINTF("called");
+    DEBUG_INFO("called");
 
     __attribute__((unused)) uint64_t
         sepc = CSRR("sepc"),
@@ -37,7 +37,7 @@ void kernel_trap() {
                                 char c = uart_read();
                                 if (c == 27) // ESC
                                     poweroff();
-                                DEBUG_PRINTF("Received character %d\n", (int)c);
+                                DEBUG_INFO("Received character %d\n", (int)c);
                                 break;
                             }
                             default:
@@ -58,16 +58,61 @@ void kernel_trap() {
         case CSR_CAUSE_STI: {
             DEBUG_INFO("timer interrupt");
             uint64_t stimecmp = CSRR("stimecmp");
-            DEBUG_PRINTF("mtime = %p, stimecmp = %p", (void*)mtime, (void*)stimecmp);
+            DEBUG_INFO("mtime = %p, stimecmp = %p", (void*)mtime, (void*)stimecmp);
             CSRW("stimecmp", stimecmp + 10000000);
             break;
         }
         case CSR_CAUSE_SSI: {
-            DEBUG_INFO("software interrupt (ignore for now)");
+            DEBUG_ERROR("ecall handling not implemented");
+            poweroff();
+        }
+        case CSR_CAUSE_INSTR_ILLEGAL: {
+            // first float operation triggers illegal instruction, need to check if that's the case
+            if ((CSRR("sstatus") & CSR_STATUS_FS) != CSR_STATUS_FS_INIT) {
+                DEBUG_ERROR("Illegal instruction");
+                poweroff();
+            }
+            // zero-initialize float registers before first use for security and determinism
+            asm volatile (
+                "fmv.d.x f0,x0;\
+                fmv.d f1,f0;\
+                fmv.d f2,f0;\
+                fmv.d f3,f0;\
+                fmv.d f4,f0;\
+                fmv.d f5,f0;\
+                fmv.d f6,f0;\
+                fmv.d f7,f0;\
+                fmv.d f8,f0;\
+                fmv.d f9,f0;\
+                fmv.d f10,f0;\
+                fmv.d f11,f0;\
+                fmv.d f12,f0;\
+                fmv.d f13,f0;\
+                fmv.d f14,f0;\
+                fmv.d f15,f0;\
+                fmv.d f16,f0;\
+                fmv.d f17,f0;\
+                fmv.d f18,f0;\
+                fmv.d f19,f0;\
+                fmv.d f20,f0;\
+                fmv.d f21,f0;\
+                fmv.d f22,f0;\
+                fmv.d f23,f0;\
+                fmv.d f24,f0;\
+                fmv.d f25,f0;\
+                fmv.d f26,f0;\
+                fmv.d f27,f0;\
+                fmv.d f28,f0;\
+                fmv.d f29,f0;\
+                fmv.d f30,f0;\
+                fmv.d f31,f0;\
+                ");
+                // CSRW("sstatus", (sstatus & ~CSR_STATUS_FS) | CSR_STATUS_FS_CLEAN);
+                CSRS("sstatus", CSR_STATUS_FS_DIRTY);
             break;
         }
         default:
-            DEBUG_WARN("scause = %p", (void*) scause);
+            DEBUG_ERROR("scause = %p\n", (void*) scause);
             poweroff();
     }
 }

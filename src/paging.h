@@ -4,7 +4,11 @@
 #include <stdint.h>
 #include <csr.h>
 
-void vminit();
+extern struct pgtable kernel_pgdir;
+typedef uint64_t pte_t;
+
+void pginit();
+pte_t* pgmap(struct pgtable *pgdir, void *pa, void *va, u16 flags);
 
 #define PGSHIFT 12            // offset bits per page aka log2(PGSIZE)
 #define PGSIZE (1 << PGSHIFT) // page size aka 2^PGSHIFT
@@ -13,29 +17,28 @@ void vminit();
 
 #define PHYSTOP 0x88000000 // what we will consider as the address right after the max valid physical address
 
-// Page Table/Directory
-typedef struct {
-    uintptr_t entries[PGENTRIES];
-} pgtable_t __attribute__((aligned(PGSIZE)));
-extern pgtable_t krnl_pgdir; // Kernel root page table, defined in paging.c
-
 #define PTE2PA(pte) (((pte) >> 10) << 12) // Remove flag bits to get physical address
 #define PA2PTE(pa) ((((uint64_t)pa) >> 12) << 10) // Clear offset and shift to align with PTE
 #define PTE_FLAGS(pte) ((pte) & 0x3FF)
+
+#define VA2PA(va) (va)
+#define PA2VA(pa) (pa)
 
 #define PXMASK         0x1FF // 9 bits
 #define PXSHIFT(level) (PGSHIFT+(9*(level)))
 #define PX(level, va)  ((((uint64_t) (va)) >> PXSHIFT(level)) & PXMASK)
 
-#define PTE_V 1          // Valid bit - if not set, page entry is invalid
-#define PTE_R (1 << 1)   // Permission to read
-#define PTE_W (1 << 2)   // Permission to write
-#define PTE_X (1 << 3)   // Permission to execute
-#define PTE_U (1 << 4)   // Permission for user
-#define PTE_G (1 << 5)   // Global Bit - if set, the page is accessible regardless of the page table in use
-#define PTE_A (1 << 6)   // Accessed Bit - indicates the virtual page has been read, written, or fetched from since the last time the A bit was cleared
-#define PTE_D (1 << 7)   // Dirty Bit - indicates the virtual page has been written since the last time the D bit was cleared
-#define PTE_RSW (3 << 8) // Unused by hardware, free for the software to use
+#define PTE_V 1L          // Valid bit - if not set, page entry is invalid (won't be used by the MMU)
+#define PTE_R (1L << 1)   // Permission to read
+#define PTE_W (1L << 2)   // Permission to write
+#define PTE_X (1L << 3)   // Permission to execute
+#define PTE_U (1L << 4)   // Permission for user
+#define PTE_G (1L << 5)   // Global Bit - if set, the page is accessible regardless of the page table in use
+#define PTE_A (1L << 6)   // Accessed Bit - indicates the virtual page has been read, written, or fetched from since the last time the A bit was cleared
+#define PTE_D (1L << 7)   // Dirty Bit - indicates the virtual page has been written since the last time the D bit was cleared
+#define PTE_SW (3L << 8)  // Unused by hardware, free for the software to use
+#define PTE_SW0 (1L << 8)
+#define PTE_SW1 (2L << 8)
 
 #define PTE_RW (PTE_R | PTE_W) // Permission to read and write
 #define PTE_RX (PTE_R | PTE_X) // Permission to read and execute
@@ -50,7 +53,7 @@ extern pgtable_t krnl_pgdir; // Kernel root page table, defined in paging.c
         (mode) == CSR_SATP_SV39 ? 2\
         : (mode) == CSR_SATP_SV48 ? 3\
         : (mode) == CSR_SATP_SV57 ? 4\
-        : (mode) == CSR_SATP_BARE ? 0\
+        /*: (mode) == CSR_SATP_BARE ? 0*/\
         : -1\
     )
 #endif

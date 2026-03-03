@@ -10,7 +10,7 @@
 // according to our device tree
 #define SYSCON_ADDR 0x100000
 
-void poweroff(void);
-void reboot(void);
+__attribute__((noreturn)) void poweroff(void);
+__attribute__((noreturn)) void reboot(void);
 
 #endif

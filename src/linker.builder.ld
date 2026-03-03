@@ -8,7 +8,7 @@ SECTIONS {
     .text : {
         PROVIDE(kernel_text_start = .);
         *(.init)
-        *(.text*)
+        *(.text)
     }
     . = ALIGN(PGSIZE);
     PROVIDE(kernel_text_end = .);
@@ -16,7 +16,8 @@ SECTIONS {
     . = ALIGN(PGSIZE);
     .rodata : {
         PROVIDE(kernel_rodata_start = .);
-        *(.rodata*)
+        *(.rodata)
+        *(.srodata)
     }
     . = ALIGN(PGSIZE);
     PROVIDE(kernel_rodata_end = .);
@@ -24,16 +25,25 @@ SECTIONS {
     . = ALIGN(PGSIZE);
     .data : {
         PROVIDE(kernel_data_start = .);
-        *(.data*)
+        *(.data)
+        *(.sdata)
         PROVIDE(kernel_data_end = .);
     }
 
     .bss : {
         PROVIDE(kernel_bss_start = .);
-        *(.bss*)
+        *(.bss)
+        *(.sbss)
     }
     . = ALIGN(PGSIZE);
     PROVIDE(kernel_bss_end = .);
 
     PROVIDE(kernel_end = .);
+
+    /DISCARD/ : {
+        *(.comment)
+        *(.note*)
+        *(.riscv.attributes)
+        *(.rela.*)
+    }
 }

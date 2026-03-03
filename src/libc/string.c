@@ -25,9 +25,11 @@ void *memmove(void *const dest, const void *src, const size_t n) {
 }
 
 char *strcpy(char *const dest, const char *src) {
-    char *d = dest;
-    do *(d++) = *(src++); while (*src != '\0');
-    return dest;
+    for (char *d = dest ;; ++d, ++src) {
+        *d = *src;
+        if (*src == '\0')
+            return dest;
+    }
 }
 
 char *strncpy(char *const dest, const char *src, const size_t n) {
