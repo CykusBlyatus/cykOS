@@ -1,7 +1,7 @@
 #ifndef CYKOS_THREAD_H
 #define CYKOS_THREAD_H
 
-#include <riscv.h>
+#include <include/riscv.h>
 
 // Puts the thread to sleep on the channel until another thread wakes it up
 int sleep(void *chan);

@@ -2,8 +2,8 @@
 #define CYKOS_PAGING_H
 
 #include <stdint.h>
-#include <csr.h>
 #include <stddef.h>
+#include <include/csr.h>
 
 extern struct pgtable kernel_pgdir;
 typedef uint64_t pte_t;

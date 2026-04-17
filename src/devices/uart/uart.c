@@ -1,7 +1,7 @@
 #include "uart.h"
 #include "uart_macros.h"
 #include <stdint.h>
-#include "syscon.h"
+#include <devices/syscon/syscon.h>
 
 void uart_init(void) {
     UART0_IER = 0; // disable interrupts

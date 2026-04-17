@@ -1,5 +1,5 @@
 #include "memory.h"
-#include <paging.h>
+#include "paging.h"
 #include <stdio.h>
 #include "auxiliary/debug.h"
 #include <proc/lock.h>

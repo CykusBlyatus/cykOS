@@ -1,16 +1,16 @@
 #include "paging.h"
-#include "csr.h"
+#include <include/csr.h>
 #include <stdint.h>
 #include <string.h>
 #include <stddef.h>
 
 // for "panic"
 #include <stdio.h>
-#include "syscon.h"
+#include <devices/syscon/syscon.h>
 
 // to get addresses
-#include "plic.h"
-#include "uart_macros.h"
+#include <trap/plic.h>
+#include <devices/uart/uart_macros.h>
 #include <virtio/blk.h>
 
 #define DEBUG

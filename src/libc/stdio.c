@@ -1,7 +1,6 @@
 #include "stdio.h"
-#include <uart.h>
+#include <devices/uart/uart.h>
 
-#include <stdint.h>
 #include <stddef.h>
 #include <limits.h>
 #include <ctype.h>
@@ -287,7 +286,7 @@ int printf(const char *format, ...) {
     return retv;
 }
 
-#include <csr.h>
+#include <include/csr.h>
 void panic(const char *fmt, ...)
 {
     CSRW("sie", 0);

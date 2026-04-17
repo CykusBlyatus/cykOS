@@ -2,10 +2,10 @@
 
 #include "thread.h"
 #include "auxiliary/debug.h"
-#include "memory/memory.h"
-#include "paging.h"
+#include <memory/memory.h>
+#include <memory/paging.h>
 #include <stddef.h>
-#include <riscv.h>
+#include <include/riscv.h>
 #include <stdio.h>
 #include <string.h>
 

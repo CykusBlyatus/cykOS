@@ -5,8 +5,8 @@
 #include "mmio.h"
 #include "virtq.h"
 #include "blk.h"
-#include <syscon.h>
-#include <paging.h>
+#include <devices/syscon/syscon.h>
+#include <memory/paging.h>
 #include <string.h>
 #include <stdio.h>
 

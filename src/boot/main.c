@@ -2,12 +2,12 @@
 #include <auxiliary/debug.h>
 
 #include <stdio.h>
-#include "uart.h"
-#include "syscon.h"
-#include "plic.h"
-#include "csr.h"
-#include "timer.h"
-#include "paging.h"
+#include <devices/uart/uart.h>
+#include <devices/syscon/syscon.h>
+#include <trap/plic.h>
+#include <include/csr.h>
+#include <devices/timer/timer.h>
+#include <memory/paging.h>
 #include <virtio/virtio.h>
 #include <memory/memory.h>
 #include <proc/thread.h>
@@ -16,6 +16,7 @@
 extern void trap_handler_s();
 int main();
 
+// from _start in startup.S
 void start() {
     CSRW("mepc", main); // set "return" address to main
     CSRW("stvec", trap_handler_s);

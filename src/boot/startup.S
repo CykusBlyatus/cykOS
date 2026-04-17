@@ -10,7 +10,7 @@ _start:
     mul t0,t0,tp
     add sp,sp,t0
 
-    j start
+    j start # main.c
 
 .section .bss
 .align 8

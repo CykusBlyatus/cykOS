@@ -2,17 +2,17 @@
 #include <auxiliary/debug.h>
 
 #include "interrupts.h"
-#include "paging.h"
+#include <memory/paging.h>
 #include "plic.h"
-#include "csr.h"
+#include <include/csr.h>
 #include <stdint.h>
 #include <stdio.h>
-#include "proc/thread.h"
-#include "riscv.h"
-#include "timer.h"
-#include "syscon.h"
-#include "uart.h"
-#include "uart_macros.h"
+#include <proc/thread.h>
+#include <include/riscv.h>
+#include <devices/timer/timer.h>
+#include <devices/uart/uart.h>
+#include <devices/uart/uart_macros.h>
+#include <devices/syscon/syscon.h>
 
 void kernel_trap(cpucontext_t *ctx) {
     DEBUG_INFO("called");
