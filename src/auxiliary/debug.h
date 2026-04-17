@@ -1,6 +1,8 @@
 #ifndef CYKOS_DEBUG_H
 #define CYKOS_DEBUG_H
 
+// #undef DEBUG
+
 #ifdef DEBUG
     #include <stdio.h>
     #include "ansi_colors.h"

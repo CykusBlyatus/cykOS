@@ -26,6 +26,7 @@ LD_BUILDER=src/linker.builder.ld
 OBJS=$(C_FILES:src/%.c=obj/%.o) $(ASM_FILES:src/%.S=obj/%.o)
 
 KERNEL=kernel.bin
+
 DISK=disk.img
 DISKID=hd0
 DISKFMT=qcow2
@@ -52,6 +53,11 @@ obj/%.o: src/%.S
 	@mkdir -p $(dir $@)
 	@echo "Assembling $@..."
 	@$(AS) $(ASFLAGS) $< -o $@
+
+# Generate assembly files for analysis
+local/asm/%.S: src/%.c
+	@mkdir -p $(dir $@)
+	@$(CC) -S $(CFLAGS) $< -o $@
 
 $(LD_FILE): $(LD_BUILDER)
 	@$(CC) -E -P -x c -D PGSIZE=0x1000 $(CFLAGS) $< > $@

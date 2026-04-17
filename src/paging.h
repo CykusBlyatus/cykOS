@@ -3,12 +3,20 @@
 
 #include <stdint.h>
 #include <csr.h>
+#include <stddef.h>
 
 extern struct pgtable kernel_pgdir;
 typedef uint64_t pte_t;
 
 void pginit();
-pte_t* pgmap(struct pgtable *pgdir, void *pa, void *va, u16 flags);
+
+pte_t* pgmap(struct pgtable *pgdir, u64 pa, void *va, u8 flags);
+// int pgmap_pte(pte_t *pte, u64 pa, u8 flags);
+
+u64 pgalloc();
+void* pgallocdirect(u8 flags);
+
+void pgfree(struct pgtable *pgdir, void *va);
 
 #define PGSHIFT 12            // offset bits per page aka log2(PGSIZE)
 #define PGSIZE (1 << PGSHIFT) // page size aka 2^PGSHIFT
@@ -21,8 +29,21 @@ pte_t* pgmap(struct pgtable *pgdir, void *pa, void *va, u16 flags);
 #define PA2PTE(pa) ((((uint64_t)pa) >> 12) << 10) // Clear offset and shift to align with PTE
 #define PTE_FLAGS(pte) ((pte) & 0x3FF)
 
-#define VA2PA(va) (va)
-#define PA2VA(pa) (pa)
+#define KERNEL_VA_START (\
+    PGMODE == CSR_SATP_SV39 ? 0xFFFFFFC000000000 :\
+    PGMODE == CSR_SATP_SV48 ? 0xFFFF800000000000 :\
+    PGMODE == CSR_SATP_SV57 ? 0xFF00000000000000 :\
+0)
+
+#define KERNEL_HEAP_START KERNEL_VA_START
+#define KERNEL_HEAP_SIZE (256 << 20) // 256MiB
+#define KERNEL_HEAP_END (KERNEL_HEAP_START + KERNEL_HEAP_SIZE)
+
+#define KERNEL_PHYSMAP_START KERNEL_HEAP_END
+
+#define VA2PA(va) (((u64)(va)) - KERNEL_PHYSMAP_START)
+#define PA2VA(pa) ((void*)(KERNEL_PHYSMAP_START + ((u64)(pa))))
+#define PTE2VA(pte) PA2VA(PTE2PA(pte))
 
 #define PXMASK         0x1FF // 9 bits
 #define PXSHIFT(level) (PGSHIFT+(9*(level)))

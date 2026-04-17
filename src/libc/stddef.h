@@ -8,4 +8,8 @@
 typedef unsigned long size_t;
 typedef long long ptrdiff_t;
 
+#ifndef offsetof
+    #define offsetof(type, member) ((size_t) &((type*)0)->member)
+#endif
+
 #endif /* CYKOS_STDDEF_H */

@@ -16,15 +16,14 @@
 #define DEBUG
 #include <auxiliary/debug.h>
 
-#define PROTECT_FREE_PAGES
+#define PROTECT_FREE_PAGES // TODO: add compatibility for when this is disabled
 
-#define TLB_FLUSH_VA(va, asid)  asm volatile ("sfence.vma %0, %1" :: "r"(va),"r"(asid) : "memory")
-#define TLB_FLUSH_AS(asid)      asm volatile ("sfence.vma x0, %0" :: "r"(asid) : "memory")
+#define TLB_FLUSH(va, asid)     asm volatile ("sfence.vma %0, %1" :: "r"(va),"r"(asid) : "memory")
+#define TLB_FLUSH_ASID(asid)    asm volatile ("sfence.vma x0, %0" :: "r"(asid) : "memory")
 #define TLB_FLUSH_VA_GLOBAL(va) asm volatile ("sfence.vma %0, x0" :: "r"(va) : "memory")
 #define TLB_FLUSH_ALL()         asm volatile ("sfence.vma x0, x0" ::: "memory")
 
 DEBUG_PUT(int debug_paging = 0;)
-const size_t pgsize = PGSIZE; // for linker.ld
 
 // Defined in linker.ld
 extern char
@@ -59,26 +58,57 @@ static struct {
     #endif
 } kmem; // same structure as pgnode_t but logically different since kmem is not a page
 
-void *pgalloc() {
-    pgnode_t *node = kmem.freelist;
-    if (!node) {
-        DEBUG_ERROR("Ran out of memory\n");
+u64 pgalloc() {
+    if (!kmem.freelist) {
+        DEBUG_WARN("Ran out of memory\n");
+        return 0;
+    }
+    u64 ret = (u64)kmem.freelist;
+    pgnode_t *node = PA2VA(ret);
+    volatile pte_t *pte = PA2VA(kmem.pte_head);
+    DEBUG_INFO("PTE at VA=%p PA=%p", pte, kmem.pte_head);
+    DEBUG_INFO("Node at VA=%p PA=%p", node, kmem.freelist);
+
+    *pte |= PTE_RW | PTE_V;
+    TLB_FLUSH(node, 0); // prevent CPU from reordering PTE write with page access
+    kmem.freelist = node->next;
+    kmem.pte_head = node->pte_next;
+    DEBUG_INFO("next_pa = %p, next_pte_pa = %p", node->next, node->pte_next);
+    *pte &= ~(PTE_RWX | PTE_V);
+    TLB_FLUSH(node, 0);
+
+    DEBUG_INFO("returning");
+    return ret;
+}
+
+void* pgallocdirect(u8 flags) {
+    if (!kmem.freelist) {
+        DEBUG_WARN("Ran out of memory\n");
         return NULL;
     }
+    pgnode_t *node = PA2VA(kmem.freelist);
     #ifdef PROTECT_FREE_PAGES
-        *kmem.pte_head |= PTE_RW | PTE_V;
+        pte_t *pte_head = PA2VA(kmem.pte_head);
+        *pte_head |= flags | PTE_V;
         kmem.pte_head = node->pte_next;
     #endif
     kmem.freelist = node->next;
     DEBUG_PUT(if (debug_paging) DEBUG_INFO("Allocated page at %p", node);)
-    return node;
+    return (void*)node;
 }
 
+// int pgmap_pte(pte_t *pte, u64 pa, u8 flags) {
+//     *pte = PA2PTE(pa) | flags | PTE_V;
+//     return 0;
+// }
+
 void pgfree(pgtable_t *root_pgdir, void *va) {
+    DEBUG_INFO("Freeing %p", va);
     pgtable_t *pgdir = root_pgdir;
     pte_t *pte;
     for (int level = PGLEVELS(PGMODE) ;; --level) {
         pte = &pgdir->entries[PX(level, va)];
+        // DEBUG_INFO("PTE_VA=%p", pte);
         if (!(*pte & PTE_V)) {
             DEBUG_ERROR("Attempted to free unmapped virtual address %p", va);
             poweroff();
@@ -91,46 +121,56 @@ void pgfree(pgtable_t *root_pgdir, void *va) {
             DEBUG_ERROR("Superpages not supported\n");
             poweroff();
         }
-        pgdir = (pgtable_t*)PTE2PA(*pte);
+        pgdir = PA2VA(PTE2PA(*pte));
     }
 
-    if (root_pgdir == &kernel_pgdir) {
-        #ifdef PROTECT_FREE_PAGES
-            if (!(*pte & PTE_RWX)) {
-                DEBUG_ERROR("Attempted page double-free at virtual address %p", va);
-                poweroff();
-            }
-            *pte &= ~PTE_RWX;
-        #else
-            *pte &= ~PTE_X;
-            *pte |= PTE_RW;
-        #endif
-    } else {
-        *pte = 0;
-        DEBUG_ERROR("Multiple page tables not supported yet");
-        poweroff();
-    }
+    u64 pa = VA2PA(va);
+    *pte = PA2PTE(pa);
+    kmem.freelist = (void*)pa;
+    kmem.pte_head = (void*)VA2PA(pte);
 
-    kmem.freelist = (pgnode_t*)PTE2PA(*pte);
-    #ifdef PROTECT_FREE_PAGES
-        kmem.pte_head = pte;
-    #endif
-
-    TLB_FLUSH_VA(va, 0);
+    TLB_FLUSH(va, 0);
+    DEBUG_INFO("returning");
 }
 
-pte_t* pgmap(pgtable_t *pgdir, void *pa, void *va, u16 flags) {
+pte_t* pgmap(pgtable_t *pgdir, u64 pa, void *va, u8 flags) {
+    if (pgdir != &kernel_pgdir)
+        panic("Multiple page tables not supported yet");
+
+    if (((u64)va & (PGSIZE-1)) != 0)
+        panic("va (%p) %% PGSIZE (0x%x) != 0\n", va, PGSIZE);
+
+    DEBUG_PUT(if (debug_paging) DEBUG_INFO("Mapping %p to %p...", va, (void*)pa);)
+
+    for (int level = PGLEVELS(PGMODE); level > 0; --level) {
+        pte_t *pte = &pgdir->entries[PX(level, va)];
+        DEBUG_PUT(if (debug_paging) DEBUG_INFO("PTE at %p", pte));
+        if(*pte & PTE_V) {
+            pgdir = PTE2VA(*pte);
+        } else {
+            panic("Tried to call pgmap on unmapped virtual address %p", va);
+        }
+        DEBUG_PUT(if (debug_paging) DEBUG_INFO("PTE = %p, pgdir = %p", (void*)*pte, pgdir);)
+    }
+
+    pte_t *pte = &pgdir->entries[PX(0, va)];
+    *pte = PA2PTE(pa) | flags | PTE_V;
+    return pte;
+}
+
+// pgmap in physical mode
+static pte_t* physpgmap(pgtable_t *pgdir, u64 pa, void *va, u8 flags) {
     if (pgdir != &kernel_pgdir) {
         DEBUG_ERROR("Multiple page tables not supported yet");
         poweroff();
     }
 
-    if (((uptr)va & (PGSIZE-1)) != 0) {
-        DEBUG_ERROR("va (%p) %% PGSIZE (%x) != 0\n", va, PGSIZE);
+    if (((u64)va & (PGSIZE-1)) != 0) {
+        DEBUG_ERROR("va (%p) %% PGSIZE (0x%x) != 0\n", va, PGSIZE);
         poweroff(); // die
     }
 
-    DEBUG_PUT(if (debug_paging) DEBUG_INFO("Mapping %p to %p...", va, pa);)
+    DEBUG_PUT(if (debug_paging) DEBUG_INFO("Mapping %p to %p...", va, (void*)pa);)
 
     for (int level = PGLEVELS(PGMODE); level > 0; --level) {
         pte_t *pte = &pgdir->entries[PX(level, va)];
@@ -138,21 +178,23 @@ pte_t* pgmap(pgtable_t *pgdir, void *pa, void *va, u16 flags) {
             pgdir = (void*)PTE2PA(*pte);
         } else {
             if ((pgdir = (pgtable_t*)kmem.freelist) == NULL) {
-                DEBUG_ERROR("Ran out of memory");
+                DEBUG_WARN("Ran out of memory");
                 return NULL;
             }
-            *(pgnode_t*)&kmem = *(pgnode_t*)pgdir;
+            kmem.pte_head = kmem.freelist->pte_next;
+            kmem.freelist = kmem.freelist->next;
+            // __builtin_memcpy(&kmem, kmem.freelist, sizeof(pgnode_t));
+
             __builtin_memset(__builtin_assume_aligned(pgdir, PGSIZE), 0, PGSIZE);
             *pte = PA2PTE(pgdir) | PTE_V;
-            #ifdef PROTECT_FREE_PAGES
-                pgmap(&kernel_pgdir, pgdir, pgdir, PTE_RW);
-            #endif
+            physpgmap(&kernel_pgdir, (u64)pgdir, PA2VA(pgdir), PTE_RW);
         }
         DEBUG_PUT(if (debug_paging) DEBUG_INFO("PTE = %p, pgdir = %p", (void*)*pte, pgdir);)
     }
 
     pte_t *pte = &pgdir->entries[PX(0, va)];
     *pte = PA2PTE(pa) | flags | PTE_V;
+    DEBUG_PUT(if (debug_paging) DEBUG_INFO("VA=%p PA=%p PTE2PA=%p", va, (void*)pa, (void*)PTE2PA(*pte)));
     return pte;
 }
 
@@ -166,50 +208,51 @@ void pginit() {
 
     DEBUG_INFO("Mapping kernel text (%p-%p)...", kernel_text_start, kernel_text_end);
     for (void *addr = kernel_text_start; addr < (void*)kernel_text_end; addr += PGSIZE)
-        pgmap(&kernel_pgdir, addr, addr, PTE_RX);
+        physpgmap(&kernel_pgdir, (u64)addr, addr, PTE_RX);
 
     DEBUG_INFO("Mapping kernel rodata (%p-%p)...", kernel_rodata_start, kernel_rodata_end);
     for (void *addr = kernel_rodata_start; addr < (void*)kernel_rodata_end; addr += PGSIZE)
-        pgmap(&kernel_pgdir, addr, addr, PTE_R);
+        physpgmap(&kernel_pgdir, (u64)addr, addr, PTE_R);
 
     DEBUG_INFO("Mapping kernel data and bss (%p-%p)...", kernel_data_start, kernel_bss_end);
     for (void *addr = kernel_data_start; addr < (void*)kernel_bss_end; addr += PGSIZE)
-        pgmap(&kernel_pgdir, addr, addr, PTE_RW);
+        physpgmap(&kernel_pgdir, (u64)addr, addr, PTE_RW);
 
     DEBUG_INFO("Mapping UART (%p-%p)...", (void*)UART0_BASE, (void*)UART0_BASE + PGSIZE);
-    pgmap(&kernel_pgdir, (void*)UART0_BASE, (void*)UART0_BASE, PTE_RW);
+    physpgmap(&kernel_pgdir, (u64)UART0_BASE, (void*)UART0_BASE, PTE_RW);
 
     // PLIC is so big that printing debug for it slows down this function
     DEBUG_PUT(int debug_paging_ = debug_paging;);
     DEBUG_PUT(debug_paging = 0;)
     DEBUG_INFO("Mapping PLIC (%p-%p)...", (void*)PLIC_BASE, (void*)PLIC_BASE + 0x4000000);
     for (void *addr = (void*)PLIC_BASE; addr < (void*)PLIC_BASE + 0x4000000; addr += PGSIZE)
-        pgmap(&kernel_pgdir, addr, addr, PTE_RW);
+        physpgmap(&kernel_pgdir, (u64)addr, addr, PTE_RW);
     DEBUG_PUT(debug_paging = debug_paging_;)
 
     DEBUG_INFO("Mapping SYSCON (%p-%p)...", (void*)SYSCON_ADDR, (void*)SYSCON_ADDR + PGSIZE);
-    pgmap(&kernel_pgdir, (void*)SYSCON_ADDR, (void*)SYSCON_ADDR, PTE_RW);
+    physpgmap(&kernel_pgdir, (u64)SYSCON_ADDR, (void*)SYSCON_ADDR, PTE_RW);
 
     // map clint as read-only just so I can read mtime
     void *clint = (void*)0x2000000;
     DEBUG_INFO("Mapping CLINT (%p-%p)...", clint, clint + 0x10000);
     for (void *addr = clint; addr < clint + 0x10000; addr += PGSIZE)
-        pgmap(&kernel_pgdir, addr, addr, PTE_R);
+        physpgmap(&kernel_pgdir, (u64)addr, addr, PTE_R);
 
-    #ifdef PROTECT_FREE_PAGES
-    {
-        for (pgnode_t *node = (pgnode_t*)&kmem; node->next != NULL; node = node->next) {
-            node->pte_next = pgmap(&kernel_pgdir, node->next, node->next, 0);
+    physpgmap(&kernel_pgdir, (u64)&DISK0(0), (void*)&DISK0(0), PTE_RW);
+
+    for (void *addr = (void*)KERNEL_HEAP_START; addr != (void*)KERNEL_HEAP_END; addr += PGSIZE)
+        *physpgmap(&kernel_pgdir, 0, addr, 0) &= ~PTE_V;
+
+    for (pgnode_t *node = (pgnode_t*)&kmem; node->next != NULL; node = node->next) {
+        #ifdef PROTECT_FREE_PAGES
+            node->pte_next = physpgmap(&kernel_pgdir, (u64)node->next, PA2VA(node->next), 0);
             *node->pte_next &= ~PTE_V;
-        }
+        #else
+            physpgmap(&kernel_pgdir, (u64)node->next, PA2VA(node->next), PTE_RW);
+        #endif
     }
-    #else
-    {
-        for (void *addr = kernel_end; addr < (void*)PHYSTOP; addr += PGSIZE)
-            pgmap(&kernel_pgdir, addr, addr, PTE_RW);
-    }
-    #endif
 
     DEBUG_INFO("Kernel root page table at %p", &kernel_pgdir);
     CSRW("satp", PGMODE | ((uptr)&kernel_pgdir >> PGSHIFT));
+    TLB_FLUSH_ALL();
 }

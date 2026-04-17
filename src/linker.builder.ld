@@ -7,8 +7,8 @@ SECTIONS {
     . = ALIGN(PGSIZE);
     .text : {
         PROVIDE(kernel_text_start = .);
-        *(.init)
-        *(.text)
+        *(.init*)
+        *(.text*)
     }
     . = ALIGN(PGSIZE);
     PROVIDE(kernel_text_end = .);
@@ -16,8 +16,8 @@ SECTIONS {
     . = ALIGN(PGSIZE);
     .rodata : {
         PROVIDE(kernel_rodata_start = .);
-        *(.rodata)
-        *(.srodata)
+        *(.rodata*)
+        *(.srodata*)
     }
     . = ALIGN(PGSIZE);
     PROVIDE(kernel_rodata_end = .);

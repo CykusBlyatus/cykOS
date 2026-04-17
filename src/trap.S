@@ -1,8 +1,11 @@
-.macro save_regs
+.globl trap_handler_s
+trap_handler_s:
+        # save registers
+        sd sp, -248(sp)
         addi sp, sp, -256
 
         sd ra, 0(sp)
-        sd sp, 8(sp)
+        # sd sp, 8(sp)
         sd gp, 16(sp)
         sd tp, 24(sp)
         sd t0, 32(sp)
@@ -32,13 +35,15 @@
         sd t4, 224(sp)
         sd t5, 232(sp)
         sd t6, 240(sp)
-.endm
 
-.macro restore_regs
+        mv a0, sp
+        call kernel_trap
+
+        # restore registers
         ld ra, 0(sp)
-        ld sp, 8(sp)
+        # ld sp, 8(sp)
         ld gp, 16(sp)
-        # not tp (contains hartid), in case we moved CPUs
+        ld tp, 24(sp)
         ld t0, 32(sp)
         ld t1, 40(sp)
         ld t2, 48(sp)
@@ -66,13 +71,6 @@
         ld t4, 224(sp)
         ld t5, 232(sp)
         ld t6, 240(sp)
+        ld sp, 8(sp) # restore sp last, in case there was a context switch
 
-        addi sp, sp, 256
-.endm
-
-.globl trap_handler_s
-trap_handler_s:
-        save_regs
-        call kernel_trap
-        restore_regs
         sret

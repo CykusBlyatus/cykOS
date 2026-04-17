@@ -1,18 +1,24 @@
-#include "interrupts.h"
-#include "plic.h"
-#include "csr.h"
-#include <stdint.h>
-
 #include <auxiliary/debug_enable.h>
 #include <auxiliary/debug.h>
 
+#include "interrupts.h"
+#include "paging.h"
+#include "plic.h"
+#include "csr.h"
+#include <stdint.h>
+#include <stdio.h>
+#include "proc/thread.h"
+#include "riscv.h"
 #include "timer.h"
 #include "syscon.h"
 #include "uart.h"
 #include "uart_macros.h"
 
-void kernel_trap() {
+void kernel_trap(cpucontext_t *ctx) {
     DEBUG_INFO("called");
+
+    for (int i = 0; i < 31; ++i)
+        DEBUG_INFO("x%d (%s) = %p (%llu)", i+1, regnames[i+1], (void*)ctx->regs[i], ctx->regs[i]);
 
     __attribute__((unused)) uint64_t
         sepc = CSRR("sepc"),
@@ -47,7 +53,7 @@ void kernel_trap() {
                     break;
                 }
                 default:
-                    DEBUG_WARN("irq = %d", irq);
+                    DEBUG_WARN("Unhandled IRQ %d", irq);
             }
 
             if (irq)
@@ -57,14 +63,19 @@ void kernel_trap() {
         }
         case CSR_CAUSE_STI: {
             DEBUG_INFO("timer interrupt");
-            uint64_t stimecmp = CSRR("stimecmp");
-            DEBUG_INFO("mtime = %p, stimecmp = %p", (void*)mtime, (void*)stimecmp);
-            CSRW("stimecmp", stimecmp + 10000000);
+            CSRR("stimecmp");
+            CSRW("stimecmp", mtime + 10000000);
+            ctx->pc = (void*)CSRR("sepc");
+            sched(ctx);
+            CSRW("sepc", ctx->pc);
             break;
         }
-        case CSR_CAUSE_SSI: {
-            DEBUG_ERROR("ecall handling not implemented");
-            poweroff();
+        case CSR_CAUSE_ECALL_S: { // yield()
+            CSRW("stimecmp", mtime + 10000000);
+            ctx->pc = (void*)CSRR("sepc") + 4;
+            sched(ctx);
+            CSRW("sepc", ctx->pc);
+            break;
         }
         case CSR_CAUSE_INSTR_ILLEGAL: {
             // first float operation triggers illegal instruction, need to check if that's the case
@@ -74,43 +85,64 @@ void kernel_trap() {
             }
             // zero-initialize float registers before first use for security and determinism
             asm volatile (
-                "fmv.d.x f0,x0;\
-                fmv.d f1,f0;\
-                fmv.d f2,f0;\
-                fmv.d f3,f0;\
-                fmv.d f4,f0;\
-                fmv.d f5,f0;\
-                fmv.d f6,f0;\
-                fmv.d f7,f0;\
-                fmv.d f8,f0;\
-                fmv.d f9,f0;\
-                fmv.d f10,f0;\
-                fmv.d f11,f0;\
-                fmv.d f12,f0;\
-                fmv.d f13,f0;\
-                fmv.d f14,f0;\
-                fmv.d f15,f0;\
-                fmv.d f16,f0;\
-                fmv.d f17,f0;\
-                fmv.d f18,f0;\
-                fmv.d f19,f0;\
-                fmv.d f20,f0;\
-                fmv.d f21,f0;\
-                fmv.d f22,f0;\
-                fmv.d f23,f0;\
-                fmv.d f24,f0;\
-                fmv.d f25,f0;\
-                fmv.d f26,f0;\
-                fmv.d f27,f0;\
-                fmv.d f28,f0;\
-                fmv.d f29,f0;\
-                fmv.d f30,f0;\
-                fmv.d f31,f0;\
-                ");
+                "fmv.d.x f0,x0\n"
+                "fmv.d f1,f0\n"
+                "fmv.d f2,f0\n"
+                "fmv.d f3,f0\n"
+                "fmv.d f4,f0\n"
+                "fmv.d f5,f0\n"
+                "fmv.d f6,f0\n"
+                "fmv.d f7,f0\n"
+                "fmv.d f8,f0\n"
+                "fmv.d f9,f0\n"
+                "fmv.d f10,f0\n"
+                "fmv.d f11,f0\n"
+                "fmv.d f12,f0\n"
+                "fmv.d f13,f0\n"
+                "fmv.d f14,f0\n"
+                "fmv.d f15,f0\n"
+                "fmv.d f16,f0\n"
+                "fmv.d f17,f0\n"
+                "fmv.d f18,f0\n"
+                "fmv.d f19,f0\n"
+                "fmv.d f20,f0\n"
+                "fmv.d f21,f0\n"
+                "fmv.d f22,f0\n"
+                "fmv.d f23,f0\n"
+                "fmv.d f24,f0\n"
+                "fmv.d f25,f0\n"
+                "fmv.d f26,f0\n"
+                "fmv.d f27,f0\n"
+                "fmv.d f28,f0\n"
+                "fmv.d f29,f0\n"
+                "fmv.d f30,f0\n"
+                "fmv.d f31,f0\n"
+                );
                 // CSRW("sstatus", (sstatus & ~CSR_STATUS_FS) | CSR_STATUS_FS_CLEAN);
                 CSRS("sstatus", CSR_STATUS_FS_DIRTY);
             break;
         }
+        case CSR_CAUSE_LOAD_PAGE:
+        case CSR_CAUSE_STORE_PAGE: {
+            void *addr = (void*)CSRR("stval");
+            // map heap pages on demand
+            if (addr >= (void*)KERNEL_HEAP_START && addr < (void*)KERNEL_HEAP_END) {
+                u64 pa = pgalloc();
+                void *va = (void*)((u64)addr & ~(PGSIZE - 1)); // align VA with page
+                pgmap(
+                    &kernel_pgdir,
+                    pa,
+                    va,
+                    PTE_RW
+                );
+            } else {
+                panic("%s Page Fault at %p", scause == CSR_CAUSE_LOAD_PAGE ? "Load" : "Store", addr);
+            }
+            break;
+        }
+        case CSR_CAUSE_INSTR_PAGE:
+            panic("Instruction Page Fault at %p", (void*)CSRR("stval"));
+            break;
         default:
             DEBUG_ERROR("scause = %p\n", (void*) scause);
             poweroff();

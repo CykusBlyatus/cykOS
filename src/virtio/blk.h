@@ -4,7 +4,7 @@
 #include <stdint.h>
 
 #define QEMU_VIRTIO_DISK0 0x10001000
-#define DISK0(offset) (*(uint32_t*)(QEMU_VIRTIO_DISK0 + offset))
+#define DISK0(offset) (*(volatile u32*)(QEMU_VIRTIO_DISK0 + offset))
 
 // VirtIO block device feature bits
 
@@ -80,11 +80,16 @@ typedef struct __attribute__((packed)) virtio_blk_config {
     } zoned;
 } virtio_blk_config_t;
 
-typedef struct __attribute__((packed)) virtio_blk_req {
+typedef struct virtio_blk_req_header {
     u32 type;
     u32 reserved;
     u64 sector;
-    u8 data[];
-} virtio_blk_req_t;
+} virtio_blk_req_header_t;
+
+#define VIRTIO_BLK_REQ_T(bufsize) struct __attribute__((packed)) virtio_blk_req {\
+    virtio_blk_req_header_t header;\
+    u8 data[bufsize];\
+    u8 status;\
+}
 
 #endif

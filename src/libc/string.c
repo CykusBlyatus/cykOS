@@ -32,10 +32,9 @@ char *strcpy(char *const dest, const char *src) {
     }
 }
 
-char *strncpy(char *const dest, const char *src, const size_t n) {
-    char *d = dest;
-    for (size_t i = 0; i < n; ++i) {
-        *(d++) = *(src++);
+char *strncpy(char *const dest, const char *src, size_t n) {
+    for (char *d = dest; n > 0; ++d, ++src, --n) {
+        *d = *src;
         if (*src == '\0')
             return dest;
     }

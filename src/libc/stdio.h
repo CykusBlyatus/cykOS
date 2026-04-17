@@ -17,4 +17,6 @@ int printf(const char *format, ...);
 // WARNING: returns 0 on success instead of bytes transmitted
 int vprintf(const char *format, va_list args);
 
+__attribute__((noreturn, format(printf, 1, 2))) void panic(const char *fmt, ...);
+
 #endif /* CYKOS_STDIO_H */

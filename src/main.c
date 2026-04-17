@@ -9,6 +9,9 @@
 #include "timer.h"
 #include "paging.h"
 #include <virtio/virtio.h>
+#include <memory/memory.h>
+#include <proc/thread.h>
+#include <proc/lock.h>
 
 extern void trap_handler_s();
 int main();
@@ -25,7 +28,7 @@ void start() {
 
     CSRW("medeleg", 0xffff); // delegate all exceptions to S-mode
     CSRW("mideleg", 0xffff); // delegate all interrupts to S-mode
-    CSRS("mie", CSR_IEIP_SSI | CSR_IEIP_STI | CSR_IEIP_SEI); // enable all S-mode interrupts
+    // CSRS("mie", CSR_IEIP_SSI | CSR_IEIP_STI | CSR_IEIP_SEI); // enable all S-mode interrupts
     CSRS("sie", CSR_IEIP_SSI | CSR_IEIP_STI | CSR_IEIP_SEI); // enable all S-mode interrupts
 
     // Configure physical memory protection to give supervisor mode access to all of physical memory.
@@ -39,13 +42,33 @@ void start() {
     asm volatile ("mret"); // jump to to main
 }
 
+lock_t lock;
+
+void func(__attribute__((unused)) void *c) {
+    DEBUG_INFO("%s: called", __func__);
+    DEBUG_INFO("c = %p", c);
+    for (int i = 0; i < 3; ++i) {
+    // while (1) {
+        putchar('\n');
+        asm volatile ("wfi");
+
+        // for (int i = 0; i < 100000000; ++i) asm("");
+        // sleeplock(&lock);
+        // puts(__func__);
+        // release(&lock);
+        // yield();
+    }
+}
+
 // (Already in Supervisor Mode)
 int main() {
     printf("%s called\n", __func__);
 
-    CSRS("sstatus", CSR_STATUS_FS_INIT); // allow floating-point operations
+    // CSRS("sstatus", CSR_STATUS_FS_INIT); // allow floating-point operations
 
     pginit();
+    kheapinit();
+    kthread_init();
 
     //*
     uart_init();
@@ -53,24 +76,28 @@ int main() {
     plic_enable_interrupt(HART_CONTEXT(), UART0_IRQ);
     //*/
 
+    plic_set_priority(DISK0_IRQ, 1);
+    plic_enable_interrupt(HART_CONTEXT(), DISK0_IRQ);
     disk0_init();
 
-    /*
-    DEBUG_SUCCESS("Entering uart_read() loop!");
-    char c;
-    while (1) {
-        c = uart_read();
-        if (c == 27) // ESC
-            poweroff();
-        putchar(c);
-    }
-    //*/
+    char *p = kvmalloc(sizeof(*p));
+    *p = '1';
+    kthread_start(func, p);
 
     //*
-    DEBUG_SUCCESS("Entering 'wfi' loop!");
+    DEBUG_SUCCESS("Entering main thread loop");
     while (1) {
-        printf("Waiting for interrupt...\n");
-        asm volatile ("wfi");
+        // printf("Waiting for interrupt...\n");
+        // asm volatile ("wfi");
+
+        for (int i = 0; i < 100000000; ++i) asm("");
+        putchar('0');
+
+        // for (int i = 0; i < 100000000; ++i) asm("");
+        // sleeplock(&lock);
+        // puts(__func__);
+        // release(&lock);
+        // yield();
     }
     //*/
 

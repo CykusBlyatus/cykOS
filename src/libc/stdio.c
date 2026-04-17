@@ -30,11 +30,11 @@ int puts(const char *s) {
     return 0;
 }
 
-#define MAXCHARS_U32 9
-#define MAXCHARS_U64 20
-#define MAXCHARS_U128 39
+#define MAXCHARS_I32 11
+#define MAXCHARS_I64 20
+#define MAXCHARS_I128 40
 
-#define MAXCHARS_LLU (sizeof(unsigned long long) == 4 ? MAXCHARS_U32 : sizeof(unsigned long long) == 8 ? MAXCHARS_U64 : MAXCHARS_U128)
+static const int MAXCHARS_LLU = (sizeof(unsigned long long) == 4 ? MAXCHARS_I32 : sizeof(unsigned long long) == 8 ? MAXCHARS_I64 : MAXCHARS_I128);
 
 // TODO: make format specifiers less shitty by using %u32, %i32, %u64 and %i64
 
@@ -285,4 +285,20 @@ int printf(const char *format, ...) {
     int retv = vprintf(format, args);
     va_end(args);
     return retv;
+}
+
+#include <csr.h>
+void panic(const char *fmt, ...)
+{
+    CSRW("sie", 0);
+    va_list args;
+
+    prints("Kernel Panic: ");
+    va_start(args, fmt);
+    vprintf(fmt, args);
+    va_end(args);
+    putchar('\n');
+
+    while (1)
+        asm volatile ("wfi");
 }
