@@ -9,6 +9,7 @@
 #include <stdio.h>
 #include <string.h>
 #include <devices/timer/timer.h>
+#include "lock.h"
 
 typedef enum {
     SLEEPING,
@@ -19,27 +20,40 @@ typedef enum {
 typedef struct kthread {
     cpucontext_t ctx;
     // u32 id;
-    threadstate_t state;
-    // lock_t lock;
     struct kthread *next, *prev;
     void *chan;
+    threadstate_t state;
+    // spinlock_t lock;
 } kthread_t;
 
 static kthread_t init_thread;
 kthread_t *current_thread = &init_thread;
 
+static spinlock_t lock; // global lock for now
+
 void yield() {
     asm volatile ("ecall");
 }
 
-int sleep(void *chan) {
+void sleepchan(void *chan) {
+    u64 sie = CSRR("sstatus") & CSR_STATUS_SIE;
+    CSRC("sstatus", CSR_STATUS_SIE);
+    spinlock(&lock);
+
     current_thread->state = SLEEPING;
     current_thread->chan = chan;
+
+    spinrelease(&lock);
+    CSRS("sstatus", sie);
+
     yield();
-    return 0;
 }
 
-int wakeup(void *chan) {
+void wakeupchan(void *chan) {
+    u64 sie = CSRR("sstatus") & CSR_STATUS_SIE;
+    CSRC("sstatus", CSR_STATUS_SIE);
+    spinlock(&lock);
+
     for (kthread_t *thrd = current_thread->next; thrd != current_thread; thrd = thrd->next) {
         if (thrd->state != SLEEPING || thrd->chan != chan)
             continue;
@@ -47,36 +61,55 @@ int wakeup(void *chan) {
         thrd->state = READY;
         thrd->chan = NULL;
     }
-    return 0;
+
+    spinrelease(&lock);
+    CSRS("sstatus", sie);
 }
 
-int sched(cpucontext_t *current_ctx) {
-    if (current_thread->state == RUNNING)
-        current_thread->state = READY;
+void sched(cpucontext_t *current_ctx) {
+    while (1) {
+        u64 sie = CSRR("sstatus") & CSR_STATUS_SIE;
+        CSRC("sstatus", CSR_STATUS_SIE);
+        spinlock(&lock);
 
-    for (
-        kthread_t *thrd = current_thread->next;
-        thrd != current_thread;
-        thrd = thrd->next
-    ) {
-        if (thrd->state != READY)
-            continue;
+        for (
+            kthread_t *thrd = current_thread->next;
+            thrd != current_thread;
+            thrd = thrd->next
+        ) {
+            if (thrd->state != READY)
+                continue;
 
-        if (current_ctx) {
-            current_thread->ctx = *current_ctx;
-            *current_ctx = thrd->ctx;
+            if (current_ctx) {
+                current_thread->ctx = *current_ctx;
+                *current_ctx = thrd->ctx;
+            }
+            if (current_thread->state == RUNNING)
+                current_thread->state = READY;
+            current_thread = thrd;
+            current_thread->state = RUNNING;
+            break;
         }
-        current_thread = thrd;
-        break;
+
+        spinrelease(&lock);
+        CSRS("sstatus", sie);
+
+        if (current_thread->state == RUNNING)
+            break;
+
+        if (sie & CSR_STATUS_SIE) {
+            DEBUG_INFO("No threads to run, guess I'll sleep");
+            asm volatile ("wfi");
+        } else {
+            DEBUG_INFO("No threads to run and interrupts disabled, guess I'll try to schedule a thread again");
+        }
     }
 
-    current_thread->state = RUNNING;
     DEBUG_INFO("new current_thread = %p", current_thread);
 
     DEBUG_INFO("Registers after context switch:");
     for (int i = 0; i < 31; ++i)
         DEBUG_INFO("x%d (%s) = %p (%llu)", i+1, regnames[i+1], (void*)current_thread->ctx.regs[i], current_thread->ctx.regs[i]);
-    return 0;
 }
 
 void kthread_init() {
@@ -89,67 +122,124 @@ void kthread_init() {
     CSRS("sie", CSR_IEIP_STI);
 }
 
+const char str[] = "meowl\n";
+
 __attribute__((noreturn)) static void kthread_end() {
     DEBUG_INFO("called");
     kthread_t *thrd = current_thread;
 
+    CSRC("sstatus", CSR_STATUS_SIE);
     sched(NULL);
 
+    spinlock(&lock);
     thrd->prev->next = thrd->next;
     thrd->next->prev = thrd->prev;
-
-    kvfree(thrd);
-    CSRW("sepc", current_thread->ctx.pc);
-    CSRS("sstatus", CSR_STATUS_SPP);
+    spinrelease(&lock);
 
     asm volatile(
-        // store dead thread's stack pointer for pgfree
-        "mv a1,sp\n"
+        "mv s0,%[thrd]\n" // store old thread pointer for kvfree
+        "ld s3,current_thread\n"
+        "mv s1,sp\n" // save dead thread's stack pointer
+        "li s2,2\n" // CSR_STATUS_SIE
 
-        // load stack pointer from other thread
-        "ld s0,current_thread\n"
-        "ld sp,8(s0)\n"
+        // load other thread's stack, put ctx in it
+        "ld sp,8(s3)\n"
+        "addi sp,sp,-256\n"
+        "ld t0,0(s3)\nsd t0,0(sp)\n"
+        // "ld t0,8(s3)\nsd t0,8(sp)\n"
+        "ld t0,16(s3)\nsd t0,16(sp)\n"
+        "ld t0,24(s3)\nsd t0,24(sp)\n"
+        "ld t0,32(s3)\nsd t0,32(sp)\n"
+        "ld t0,40(s3)\nsd t0,40(sp)\n"
+        "ld t0,48(s3)\nsd t0,48(sp)\n"
+        "ld t0,56(s3)\nsd t0,56(sp)\n"
+        "ld t0,64(s3)\nsd t0,64(sp)\n"
+        "ld t0,72(s3)\nsd t0,72(sp)\n"
+        "ld t0,80(s3)\nsd t0,80(sp)\n"
+        "ld t0,88(s3)\nsd t0,88(sp)\n"
+        "ld t0,96(s3)\nsd t0,96(sp)\n"
+        "ld t0,104(s3)\nsd t0,104(sp)\n"
+        "ld t0,112(s3)\nsd t0,112(sp)\n"
+        "ld t0,120(s3)\nsd t0,120(sp)\n"
+        "ld t0,128(s3)\nsd t0,128(sp)\n"
+        "ld t0,136(s3)\nsd t0,136(sp)\n"
+        "ld t0,144(s3)\nsd t0,144(sp)\n"
+        "ld t0,152(s3)\nsd t0,152(sp)\n"
+        "ld t0,160(s3)\nsd t0,160(sp)\n"
+        "ld t0,168(s3)\nsd t0,168(sp)\n"
+        "ld t0,176(s3)\nsd t0,176(sp)\n"
+        "ld t0,184(s3)\nsd t0,184(sp)\n"
+        "ld t0,192(s3)\nsd t0,192(sp)\n"
+        "ld t0,200(s3)\nsd t0,200(sp)\n"
+        "ld t0,208(s3)\nsd t0,208(sp)\n"
+        "ld t0,216(s3)\nsd t0,216(sp)\n"
+        "ld t0,224(s3)\nsd t0,224(sp)\n"
+        "ld t0,232(s3)\nsd t0,232(sp)\n"
+        "ld t0,240(s3)\nsd t0,240(sp)\n"
+        "ld t0,248(s3)\nsd t0,248(sp)\n"
 
-        // free dead thread's stack
+        // enable interrupts
+        "csrs sstatus,s2\n"
+
+        // pgfree(&kernel_pgdir, dead_thread_stack_ptr)
         "la a0,kernel_pgdir\n"
+        "mv a1,s1\n"
         "call pgfree\n"
 
-        // load other thread's context
-        "ld ra,0(s0)\n"
-        // "ld sp,8(s0)\n"
-        "ld gp,16(s0)\n"
-        "ld tp,24(s0)\n"
-        "ld t0,32(s0)\n"
-        "ld t1,40(s0)\n"
-        "ld t2,48(s0)\n"
-        // "ld s0,56(s0)\n"
-        "ld s1,64(s0)\n"
-        "ld a0,72(s0)\n"
-        "ld a1,80(s0)\n"
-        "ld a2,88(s0)\n"
-        "ld a3,96(s0)\n"
-        "ld a4,104(s0)\n"
-        "ld a5,112(s0)\n"
-        "ld a6,120(s0)\n"
-        "ld a7,128(s0)\n"
-        "ld s2,136(s0)\n"
-        "ld s3,144(s0)\n"
-        "ld s4,152(s0)\n"
-        "ld s5,160(s0)\n"
-        "ld s6,168(s0)\n"
-        "ld s7,176(s0)\n"
-        "ld s8,184(s0)\n"
-        "ld s9,192(s0)\n"
-        "ld s10,200(s0)\n"
-        "ld s11,208(s0)\n"
-        "ld t3,216(s0)\n"
-        "ld t4,224(s0)\n"
-        "ld t5,232(s0)\n"
-        "ld t6,240(s0)\n"
+        // kvfree(thrd)
+        "mv a0,s0\n"
+        "call kvfree\n"
 
-        "ld s0,56(s0)\n"
+        // disable interrupts
+        "csrc sstatus,s2\n"
+
+        // Set CSR_STATUS_SPP
+        "li t0,256\n"
+        "csrs sstatus,t0\n"
+
+        // Set sepc
+        "ld t0,248(sp)\n"
+        "csrw sepc,t0\n"
+
+        // Restore context
+        "ld ra,0(sp)\n"
+        // "ld sp,8(sp)\n"
+        "ld gp,16(sp)\n"
+        "ld tp,24(sp)\n"
+        "ld t0,32(sp)\n"
+        "ld t1,40(sp)\n"
+        "ld t2,48(sp)\n"
+        "ld s0,56(sp)\n"
+        "ld s1,64(sp)\n"
+        "ld a0,72(sp)\n"
+        "ld a1,80(sp)\n"
+        "ld a2,88(sp)\n"
+        "ld a3,96(sp)\n"
+        "ld a4,104(sp)\n"
+        "ld a5,112(sp)\n"
+        "ld a6,120(sp)\n"
+        "ld a7,128(sp)\n"
+        "ld s2,136(sp)\n"
+        "ld s3,144(sp)\n"
+        "ld s4,152(sp)\n"
+        "ld s5,160(sp)\n"
+        "ld s6,168(sp)\n"
+        "ld s7,176(sp)\n"
+        "ld s8,184(sp)\n"
+        "ld s9,192(sp)\n"
+        "ld s10,200(sp)\n"
+        "ld s11,208(sp)\n"
+        "ld t3,216(sp)\n"
+        "ld t4,224(sp)\n"
+        "ld t5,232(sp)\n"
+        "ld t6,240(sp)\n"
+
+        "addi sp,sp,256\n"
 
         "sret\n"
+
+        :: [thrd]"r"(thrd)
+        : "memory"
     );
     while (1);
 }
@@ -174,9 +264,15 @@ int kthread_start(void (*func)(void*), void *data) {
         .next = current_thread->next,
     };
 
+    u64 sie = CSRR("sstatus") & CSR_STATUS_SIE;
+    CSRC("sstatus", CSR_STATUS_SIE);
+    spinlock(&lock);
+
     current_thread->next = newthread;
     if (current_thread->prev == current_thread)
         current_thread->prev = newthread;
-    // yield();
+
+    spinrelease(&lock);
+    CSRS("sstatus", sie);
     return 0;
 }

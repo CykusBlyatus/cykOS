@@ -4,12 +4,12 @@
 #include <include/riscv.h>
 
 // Puts the thread to sleep on the channel until another thread wakes it up
-int sleep(void *chan);
+void sleepchan(void *chan);
 
 // Wakes up all threads sleeping on the channel
-int wakeup(void *chan);
+void wakeupchan(void *chan);
 
-int sched(cpucontext_t *current_ctx);
+void sched(cpucontext_t *current_ctx);
 void yield();
 
 // Initializes the threads manager

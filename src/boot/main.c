@@ -44,18 +44,17 @@ void start() {
     asm volatile ("mret"); // jump to to main
 }
 
-sleeplock_t lock;
+__attribute__((unused)) static sleeplock_t lock;
 
 void func(__attribute__((unused)) void *c) {
     DEBUG_INFO("%s: called", __func__);
-    DEBUG_INFO("c = %p", c);
-    // for (int i = 0; i < 3; ++i) {
-    while (1) {
-        // putchar('\n');
-        // asm volatile ("wfi");
+    for (int i = 0; i < 2; ++i) {
+    // while (1) {
+        putchar('\n');
+        asm volatile ("wfi");
 
-        for (int i = 0; i < 100000000; ++i) asm("");
-        putchar(*(char*)c);
+        // for (int i = 0; i < 100000000; ++i) asm("");
+        // putchar(*(char*)c);
 
         // sleeplock(&lock);
         // puts(__func__);
@@ -97,7 +96,7 @@ int main() {
     //*
     DEBUG_SUCCESS("Entering main thread loop");
     while (1) {
-        // printf("Waiting for interrupt...\n");
+        // printf("Honk shoo...\n");
         // asm volatile ("wfi");
 
         for (int i = 0; i < 100000000; ++i) asm("");

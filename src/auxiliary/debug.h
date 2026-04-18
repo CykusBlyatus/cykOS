@@ -1,7 +1,9 @@
 #ifndef CYKOS_DEBUG_H
 #define CYKOS_DEBUG_H
 
-// #undef DEBUG
+#ifdef NODEBUG
+    #undef DEBUG
+#endif
 
 #ifdef DEBUG
     #include <stdio.h>

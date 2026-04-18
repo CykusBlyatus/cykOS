@@ -1,4 +1,5 @@
 #include "paging.h"
+#include <proc/lock.h>
 #include <include/riscv.h>
 #include <stdint.h>
 #include <string.h>
@@ -56,11 +57,18 @@ static struct {
     #ifdef PROTECT_FREE_PAGES
         pte_t *pte_head;
     #endif
+    spinlock_t lock;
 } kmem; // same structure as pgnode_t but logically different since kmem is not a page
 
 u64 pgalloc() {
+    u64 sie = CSRR("sstatus") & CSR_STATUS_SIE;
+    CSRC("sstatus", CSR_STATUS_SIE);
+    spinlock(&kmem.lock);
+
     if (!kmem.freelist) {
         DEBUG_WARN("Ran out of memory\n");
+        spinrelease(&kmem.lock);
+        CSRS("sstatus", sie);
         return 0;
     }
     u64 ret = (u64)kmem.freelist;
@@ -70,20 +78,27 @@ u64 pgalloc() {
     DEBUG_INFO("Node at VA=%p PA=%p", node, kmem.freelist);
 
     *pte |= PTE_RW | PTE_V;
-    TLB_FLUSH(node, 0); // prevent CPU from reordering PTE write with page access
     kmem.freelist = node->next;
     kmem.pte_head = node->pte_next;
     DEBUG_INFO("next_pa = %p, next_pte_pa = %p", node->next, node->pte_next);
     *pte &= ~(PTE_RWX | PTE_V);
-    TLB_FLUSH(node, 0);
+
+    spinrelease(&kmem.lock);
+    CSRS("sstatus", sie);
 
     DEBUG_INFO("returning");
     return ret;
 }
 
 void* pgallocdirect(u8 flags) {
+    u64 sie = CSRR("sstatus") & CSR_STATUS_SIE;
+    CSRC("sstatus", CSR_STATUS_SIE);
+    spinlock(&kmem.lock);
+
     if (!kmem.freelist) {
         DEBUG_WARN("Ran out of memory\n");
+        spinrelease(&kmem.lock);
+        CSRS("sstatus", sie);
         return NULL;
     }
     pgnode_t *node = PA2VA(kmem.freelist);
@@ -93,6 +108,10 @@ void* pgallocdirect(u8 flags) {
         kmem.pte_head = node->pte_next;
     #endif
     kmem.freelist = node->next;
+
+    spinrelease(&kmem.lock);
+    CSRS("sstatus", sie);
+
     DEBUG_PUT(if (debug_paging) DEBUG_INFO("Allocated page at %p", node);)
     return (void*)node;
 }
@@ -106,30 +125,42 @@ void pgfree(pgtable_t *root_pgdir, void *va) {
     DEBUG_INFO("Freeing %p", va);
     pgtable_t *pgdir = root_pgdir;
     pte_t *pte;
+
+    va = (void*)(((u64)va) & ~(PGSIZE-1));
+
     for (int level = PGLEVELS(PGMODE) ;; --level) {
         pte = &pgdir->entries[PX(level, va)];
         // DEBUG_INFO("PTE_VA=%p", pte);
-        if (!(*pte & PTE_V)) {
-            DEBUG_ERROR("Attempted to free unmapped virtual address %p", va);
-            poweroff();
-        }
+        if (!(*pte & PTE_V))
+            panic("Attempted to free unmapped virtual address %p", va);
 
         if (level == 0)
             break;
 
-        if (*pte & PTE_RWX) {
-            DEBUG_ERROR("Superpages not supported\n");
-            poweroff();
-        }
+        if (*pte & PTE_RWX)
+            panic("Superpages not supported\n");
         pgdir = PA2VA(PTE2PA(*pte));
     }
 
     u64 pa = VA2PA(va);
     *pte = PA2PTE(pa);
+
+    u64 sie = CSRR("sstatus") & CSR_STATUS_SIE;
+    CSRC("sstatus", CSR_STATUS_SIE);
+    spinlock(&kmem.lock);
+
+    pgnode_t *node = va;
+    node->next = kmem.freelist;
+    node->pte_next = kmem.pte_head;
+
     kmem.freelist = (void*)pa;
     kmem.pte_head = (void*)VA2PA(pte);
 
+    spinrelease(&kmem.lock);
+    CSRS("sstatus", sie);
+
     TLB_FLUSH(va, 0);
+
     DEBUG_INFO("returning");
 }
 
@@ -155,20 +186,17 @@ pte_t* pgmap(pgtable_t *pgdir, u64 pa, void *va, u8 flags) {
 
     pte_t *pte = &pgdir->entries[PX(0, va)];
     *pte = PA2PTE(pa) | flags | PTE_V;
+    TLB_FLUSH(va, 0);
     return pte;
 }
 
 // pgmap in physical mode
 static pte_t* physpgmap(pgtable_t *pgdir, u64 pa, void *va, u8 flags) {
-    if (pgdir != &kernel_pgdir) {
-        DEBUG_ERROR("Multiple page tables not supported yet");
-        poweroff();
-    }
+    if (pgdir != &kernel_pgdir)
+        panic("Multiple page tables not supported yet");
 
-    if (((u64)va & (PGSIZE-1)) != 0) {
-        DEBUG_ERROR("va (%p) %% PGSIZE (0x%x) != 0\n", va, PGSIZE);
-        poweroff(); // die
-    }
+    if (((u64)va & (PGSIZE-1)) != 0)
+        panic("va (%p) %% PGSIZE (0x%x) != 0\n", va, PGSIZE);
 
     DEBUG_PUT(if (debug_paging) DEBUG_INFO("Mapping %p to %p...", va, (void*)pa);)
 
