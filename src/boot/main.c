@@ -30,30 +30,34 @@ void start() {
     CSRW("medeleg", 0xffff); // delegate all exceptions to S-mode
     CSRW("mideleg", 0xffff); // delegate all interrupts to S-mode
     // CSRS("mie", CSR_IEIP_SSI | CSR_IEIP_STI | CSR_IEIP_SEI); // enable all S-mode interrupts
-    CSRS("sie", CSR_IEIP_SSI | CSR_IEIP_STI | CSR_IEIP_SEI); // enable all S-mode interrupts
+    // CSRS("sie", CSR_IEIP_SSI | CSR_IEIP_STI | CSR_IEIP_SEI); // enable all S-mode interrupts
 
     // Configure physical memory protection to give supervisor mode access to all of physical memory.
     CSRW("pmpaddr0", 0x3fffffffffffff);
     CSRW("pmpcfg0", 0xf);
     CSRW("satp", 0); // disable paging
 
-    stimer_init();
+    // Allow stimecmp for S-mode timer
+    CSRS("menvcfg", 1L << (__riscv_xlen-1));
+    CSRS("mcounteren", 1L << 1);
 
     DEBUG_INFO("calling mret");
     asm volatile ("mret"); // jump to to main
 }
 
-lock_t lock;
+sleeplock_t lock;
 
 void func(__attribute__((unused)) void *c) {
     DEBUG_INFO("%s: called", __func__);
     DEBUG_INFO("c = %p", c);
-    for (int i = 0; i < 3; ++i) {
-    // while (1) {
-        putchar('\n');
-        asm volatile ("wfi");
+    // for (int i = 0; i < 3; ++i) {
+    while (1) {
+        // putchar('\n');
+        // asm volatile ("wfi");
 
-        // for (int i = 0; i < 100000000; ++i) asm("");
+        for (int i = 0; i < 100000000; ++i) asm("");
+        putchar(*(char*)c);
+
         // sleeplock(&lock);
         // puts(__func__);
         // release(&lock);
@@ -84,6 +88,12 @@ int main() {
     char *p = kvmalloc(sizeof(*p));
     *p = '1';
     kthread_start(func, p);
+
+    // char c1 = '2';
+    // kthread_start(func, &c1);
+
+    // Enable external interrupts
+    CSRS("sie", CSR_IEIP_SEI);
 
     //*
     DEBUG_SUCCESS("Entering main thread loop");

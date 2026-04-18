@@ -5,10 +5,16 @@
 
 typedef struct {
     u8 locked;
-} lock_t;
+} spinlock_t;
 
-void spinlock(lock_t*);
-void sleeplock(lock_t*);
-void release(lock_t*);
+void spinlock(spinlock_t*);
+void spinrelease(spinlock_t*);
+
+typedef struct {
+    u8 locked;
+} sleeplock_t;
+
+void sleeplock(sleeplock_t*);
+void sleeprelease(sleeplock_t*);
 
 #endif

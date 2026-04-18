@@ -1,12 +1,8 @@
 #ifndef CYKOS_RISCV_H
 #define CYKOS_RISCV_H
 
-#ifndef __riscv
-    #define __riscv
-    #define __riscv_xlen 64
-#endif
-
 #include <stdint.h>
+#include "xlen.h"
 
 #if __rsicv_xlen == 32
     typedef u32 cpureg_t;

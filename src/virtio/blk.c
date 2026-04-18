@@ -139,10 +139,14 @@ void disk0_init() {
     disk.avail->ring[0] = 0;
     disk.avail->idx++;
 
+    __sync_synchronize(); // ensure everything is ready before notifying disk
+
+    DISK0(VIRTIO_MMIO_QUEUE_NOTIFY) = 0;
+
     // while (*(volatile u8*)&disk.reqs[0].status == 0xff);
 
-    int i = 0;
-    const int timeout = 100000000;
+    u64 i = 0;
+    const u64 timeout = 100000000;
     for (i = 0; i < timeout && *(volatile u8*)&disk.reqs[0].status == 0xff; ++i);
     if (i >= timeout)
         panic("Disk took too long to reply");

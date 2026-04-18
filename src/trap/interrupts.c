@@ -64,14 +64,14 @@ void kernel_trap(cpucontext_t *ctx) {
         case CSR_CAUSE_STI: {
             DEBUG_INFO("timer interrupt");
             CSRR("stimecmp");
-            CSRW("stimecmp", mtime + 10000000);
+            CSRW("stimecmp", mtime + SCHED_QUANTUM);
             ctx->pc = (void*)CSRR("sepc");
             sched(ctx);
             CSRW("sepc", ctx->pc);
             break;
         }
         case CSR_CAUSE_ECALL_S: { // yield()
-            CSRW("stimecmp", mtime + 10000000);
+            CSRW("stimecmp", mtime + SCHED_QUANTUM);
             ctx->pc = (void*)CSRR("sepc") + 4;
             sched(ctx);
             CSRW("sepc", ctx->pc);

@@ -1,13 +1,14 @@
 #define DEBUG
+#include <auxiliary/debug.h>
 
 #include "thread.h"
-#include "auxiliary/debug.h"
 #include <memory/memory.h>
 #include <memory/paging.h>
 #include <stddef.h>
 #include <include/riscv.h>
 #include <stdio.h>
 #include <string.h>
+#include <devices/timer/timer.h>
 
 typedef enum {
     SLEEPING,
@@ -84,6 +85,8 @@ void kthread_init() {
         .next = current_thread,
         .prev = current_thread,
     };
+    CSRW("stimecmp", mtime + SCHED_QUANTUM);
+    CSRS("sie", CSR_IEIP_STI);
 }
 
 __attribute__((noreturn)) static void kthread_end() {

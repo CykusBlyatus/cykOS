@@ -15,7 +15,7 @@ typedef struct kheapnode {
     u8 free;
 } __attribute__((aligned(ALIGNMENT))) kheapnode_t;
 
-static lock_t lock;
+static sleeplock_t lock;
 static kheapnode_t *head;
 
 void kheapinit() {
@@ -44,7 +44,7 @@ void* vmalloc(size_t size) {
 
         node->free = 0;
         if (size >= node->size - sizeof(*node) - ALIGNMENT) {
-            release(&lock);
+            sleeprelease(&lock);
             return node+1;
         }
 
@@ -61,11 +61,11 @@ void* vmalloc(size_t size) {
 
         node->size = size;
         node->next = newnode;
-        release(&lock);
+        sleeprelease(&lock);
         return node+1;
     }
 
-    release(&lock);
+    sleeprelease(&lock);
     DEBUG_WARN("Kernel Heap ran out of memory");
     return NULL;
 }
@@ -105,7 +105,7 @@ void vfree(void *p) {
         }
     }
 
-    release(&lock);
+    sleeprelease(&lock);
 }
 
 void *kvmalloc(size_t size) {
