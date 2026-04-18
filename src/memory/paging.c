@@ -1,5 +1,5 @@
 #include "paging.h"
-#include <include/csr.h>
+#include <include/riscv.h>
 #include <stdint.h>
 #include <string.h>
 #include <stddef.h>

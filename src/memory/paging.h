@@ -3,7 +3,7 @@
 
 #include <stdint.h>
 #include <stddef.h>
-#include <include/csr.h>
+#include <include/riscv.h>
 
 extern struct pgtable kernel_pgdir;
 typedef uint64_t pte_t;

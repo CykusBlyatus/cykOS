@@ -4,7 +4,7 @@
 #include "interrupts.h"
 #include <memory/paging.h>
 #include "plic.h"
-#include <include/csr.h>
+#include <include/riscv.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <proc/thread.h>

@@ -5,7 +5,6 @@
 #include <devices/uart/uart.h>
 #include <devices/syscon/syscon.h>
 #include <trap/plic.h>
-#include <include/csr.h>
 #include <devices/timer/timer.h>
 #include <memory/paging.h>
 #include <virtio/virtio.h>

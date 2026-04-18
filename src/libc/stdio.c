@@ -286,7 +286,7 @@ int printf(const char *format, ...) {
     return retv;
 }
 
-#include <include/csr.h>
+#include <include/riscv.h>
 void panic(const char *fmt, ...)
 {
     CSRW("sie", 0);
