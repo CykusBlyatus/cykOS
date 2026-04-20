@@ -142,9 +142,26 @@ void pgfree(pgtable_t *root_pgdir, void *va) {
         pgdir = PA2VA(PTE2PA(*pte));
     }
 
-    u64 pa = VA2PA(va);
-    *pte = PA2PTE(pa);
+    // get page direct mapping
+    u64 pa = PTE2PA(*pte);
+    if (va != PA2VA(pa)) { // skip if it already is a direct mapping
+        // invalidate page
+        *pte &= ~(u64)0x3ff; // clear flags
+        TLB_FLUSH(va, 0);
 
+        va = PA2VA(pa);
+        // find PTE of direct mapping
+        pgdir = &kernel_pgdir;
+        for (int level = PGLEVELS(PGMODE) ;; --level) {
+            pte = &pgdir->entries[PX(level, va)];
+            if (level == 0)
+                break;
+            pgdir = PTE2VA(*pte);
+        }
+    }
+    *pte |= PTE_RW | PTE_V;
+
+    // add page to freelist
     u64 sie = CSRR("sstatus") & CSR_STATUS_SIE;
     CSRC("sstatus", CSR_STATUS_SIE);
     spinlock(&kmem.lock);
@@ -159,6 +176,8 @@ void pgfree(pgtable_t *root_pgdir, void *va) {
     spinrelease(&kmem.lock);
     CSRS("sstatus", sie);
 
+    // invalidate direct mapping
+    *pte &= ~(PTE_RW | PTE_V);
     TLB_FLUSH(va, 0);
 
     DEBUG_INFO("returning");

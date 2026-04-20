@@ -79,10 +79,8 @@ void kernel_trap(cpucontext_t *ctx) {
         }
         case CSR_CAUSE_INSTR_ILLEGAL: {
             // first float operation triggers illegal instruction, need to check if that's the case
-            if ((CSRR("sstatus") & CSR_STATUS_FS) != CSR_STATUS_FS_INIT) {
-                DEBUG_ERROR("Illegal instruction");
-                poweroff();
-            }
+            if ((CSRR("sstatus") & CSR_STATUS_FS) != CSR_STATUS_FS_INIT)
+                panic("Illegal instruction at %p", (void*)CSRR("sepc"));
             // zero-initialize float registers before first use for security and determinism
             asm volatile (
                 "fmv.d.x f0,x0\n"
@@ -144,7 +142,6 @@ void kernel_trap(cpucontext_t *ctx) {
             panic("Instruction Page Fault at %p", (void*)CSRR("stval"));
             break;
         default:
-            DEBUG_ERROR("scause = %p\n", (void*) scause);
-            poweroff();
+            panic("scause = %p\n", (void*) scause);
     }
 }

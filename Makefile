@@ -1,20 +1,20 @@
 # Compiler, Assembler and Linker
 CC=riscv64-unknown-elf-gcc
 AS=riscv64-unknown-elf-as
-LD=riscv64-unknown-elf-ld
+LD=riscv64-unknown-elf-gcc
 
 # C, Assembly and Linker flags
 CFLAGS+=-I src/ -I src/libc/
 CFLAGS+=-Wall -Wextra -Werror
 CFLAGS+=-mcmodel=medany
-CFLAGS+=-nostdlib -nostartfiles -nodefaultlibs -fno-builtin
+CFLAGS+=-nostdlib -nostartfiles -nodefaultlibs -fno-builtin -ffreestanding -fno-builtin-memset
 CFLAGS+=-fno-pic -fno-pie
 
 ASFLAGS+=
 
 LDFLAGS+=-T $(LD_FILE)
 LDFLAGS+=-no-pie -static
-LDFLAGS+=--orphan-handling=error
+LDFLAGS+=-Wl,--orphan-handling=error
 
 # Source files
 C_FILES=$(shell find src/ -name "*.c")
@@ -36,7 +36,7 @@ all: $(KERNEL) $(DISK)
 
 $(KERNEL): $(OBJS) $(LD_FILE)
 	@echo "Linking to $@..."
-	@$(LD) -o $(KERNEL) $(OBJS) $(LDFLAGS)
+	@$(LD) $(CFLAGS) -o $(KERNEL) $(OBJS) $(LDFLAGS)
 
 $(DISK):
 	@echo "Creating disk ($@)..."

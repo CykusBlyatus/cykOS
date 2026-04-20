@@ -122,11 +122,10 @@ void kthread_init() {
     CSRS("sie", CSR_IEIP_STI);
 }
 
-const char str[] = "meowl\n";
-
-__attribute__((noreturn)) static void kthread_end() {
+__attribute__((noreturn, optimize("omit-frame-pointer"))) static void kthread_end() {
+    // this implementation is awkward, will probably be replaced in the future
     DEBUG_INFO("called");
-    kthread_t *thrd = current_thread;
+    register kthread_t *thrd = current_thread;
 
     CSRC("sstatus", CSR_STATUS_SIE);
     sched(NULL);
@@ -136,71 +135,34 @@ __attribute__((noreturn)) static void kthread_end() {
     thrd->next->prev = thrd->prev;
     spinrelease(&lock);
 
+    // save stack pointer of thread we are ending
+    register void *dangling_stack;
+    asm volatile("mv %0,sp" : "=r"(dangling_stack));
+
+    // load stack from other thread and add a frame for ctx
     asm volatile(
-        "mv s0,%[thrd]\n" // store old thread pointer for kvfree
-        "ld s3,current_thread\n"
-        "mv s1,sp\n" // save dead thread's stack pointer
-        "li s2,2\n" // CSR_STATUS_SIE
+        "mv sp,%0\n"
+        "addi sp,sp,-%1\n"
+        :: "r"(current_thread->ctx.sp), "i"(sizeof(cpucontext_t))
+    );
 
-        // load other thread's stack, put ctx in it
-        "ld sp,8(s3)\n"
-        "addi sp,sp,-256\n"
-        "ld t0,0(s3)\nsd t0,0(sp)\n"
-        // "ld t0,8(s3)\nsd t0,8(sp)\n"
-        "ld t0,16(s3)\nsd t0,16(sp)\n"
-        "ld t0,24(s3)\nsd t0,24(sp)\n"
-        "ld t0,32(s3)\nsd t0,32(sp)\n"
-        "ld t0,40(s3)\nsd t0,40(sp)\n"
-        "ld t0,48(s3)\nsd t0,48(sp)\n"
-        "ld t0,56(s3)\nsd t0,56(sp)\n"
-        "ld t0,64(s3)\nsd t0,64(sp)\n"
-        "ld t0,72(s3)\nsd t0,72(sp)\n"
-        "ld t0,80(s3)\nsd t0,80(sp)\n"
-        "ld t0,88(s3)\nsd t0,88(sp)\n"
-        "ld t0,96(s3)\nsd t0,96(sp)\n"
-        "ld t0,104(s3)\nsd t0,104(sp)\n"
-        "ld t0,112(s3)\nsd t0,112(sp)\n"
-        "ld t0,120(s3)\nsd t0,120(sp)\n"
-        "ld t0,128(s3)\nsd t0,128(sp)\n"
-        "ld t0,136(s3)\nsd t0,136(sp)\n"
-        "ld t0,144(s3)\nsd t0,144(sp)\n"
-        "ld t0,152(s3)\nsd t0,152(sp)\n"
-        "ld t0,160(s3)\nsd t0,160(sp)\n"
-        "ld t0,168(s3)\nsd t0,168(sp)\n"
-        "ld t0,176(s3)\nsd t0,176(sp)\n"
-        "ld t0,184(s3)\nsd t0,184(sp)\n"
-        "ld t0,192(s3)\nsd t0,192(sp)\n"
-        "ld t0,200(s3)\nsd t0,200(sp)\n"
-        "ld t0,208(s3)\nsd t0,208(sp)\n"
-        "ld t0,216(s3)\nsd t0,216(sp)\n"
-        "ld t0,224(s3)\nsd t0,224(sp)\n"
-        "ld t0,232(s3)\nsd t0,232(sp)\n"
-        "ld t0,240(s3)\nsd t0,240(sp)\n"
-        "ld t0,248(s3)\nsd t0,248(sp)\n"
+    // copy ctx to stack
+    register cpucontext_t *sp asm("sp");
+    *sp = current_thread->ctx;
 
-        // enable interrupts
-        "csrs sstatus,s2\n"
+    // make kvfree and pgfree preemptible
+    CSRS("sstatus", CSR_STATUS_SIE);
 
-        // pgfree(&kernel_pgdir, dead_thread_stack_ptr)
-        "la a0,kernel_pgdir\n"
-        "mv a1,s1\n"
-        "call pgfree\n"
+    kvfree(thrd);
 
-        // kvfree(thrd)
-        "mv a0,s0\n"
-        "call kvfree\n"
+    pgfree(&kernel_pgdir, dangling_stack);
 
-        // disable interrupts
-        "csrc sstatus,s2\n"
+    // disable preemption and set things up to continue other thread
+    CSRC("sstatus", CSR_STATUS_SIE);
+    CSRS("sstatus", CSR_STATUS_SPP);
+    CSRW("sepc", sp->pc);
 
-        // Set CSR_STATUS_SPP
-        "li t0,256\n"
-        "csrs sstatus,t0\n"
-
-        // Set sepc
-        "ld t0,248(sp)\n"
-        "csrw sepc,t0\n"
-
+    asm volatile(
         // Restore context
         "ld ra,0(sp)\n"
         // "ld sp,8(sp)\n"
@@ -234,11 +196,11 @@ __attribute__((noreturn)) static void kthread_end() {
         "ld t5,232(sp)\n"
         "ld t6,240(sp)\n"
 
-        "addi sp,sp,256\n"
+        "addi sp,sp,%0\n"
 
         "sret\n"
 
-        :: [thrd]"r"(thrd)
+        :: "i"(sizeof(cpucontext_t))
         : "memory"
     );
     while (1);

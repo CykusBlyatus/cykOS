@@ -47,7 +47,7 @@ void start() {
 __attribute__((unused)) static sleeplock_t lock;
 
 void func(__attribute__((unused)) void *c) {
-    DEBUG_INFO("%s: called", __func__);
+    DEBUG_INFO("called");
     for (int i = 0; i < 2; ++i) {
     // while (1) {
         putchar('\n');

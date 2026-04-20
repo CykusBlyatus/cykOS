@@ -36,7 +36,9 @@ char *strtok (char *str, const char *delimiters);
 
 // Other
 
+__attribute__ ((/* externally_visible, */used)) // this fixes undefined reference to memset when compiling with LTO
 void *memset(void *mem, int c, size_t n);
+
 size_t strlen(const char *str);
 const char *strerror(int errnum);
 
