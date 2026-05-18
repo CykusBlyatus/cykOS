@@ -7,7 +7,7 @@
 #include <trap/plic.h>
 #include <devices/timer/timer.h>
 #include <memory/paging.h>
-#include <virtio/virtio.h>
+#include <devices/virtio/virtio.h>
 #include <memory/memory.h>
 #include <proc/thread.h>
 #include <proc/lock.h>
