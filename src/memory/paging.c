@@ -12,7 +12,7 @@
 // to get addresses
 #include <trap/plic.h>
 #include <devices/uart/uart_macros.h>
-#include <devices/virtio/blk.h>
+#include <devices/virtio/blk_internal.h>
 
 #define DEBUG
 #include <auxiliary/debug.h>

@@ -1,10 +1,11 @@
 #define DEBUG
 #include <auxiliary/debug.h>
 
+#include "blk.h"
 #include "virtio.h"
 #include "mmio.h"
 #include "virtq.h"
-#include "blk.h"
+#include "blk_internal.h"
 #include <devices/syscon/syscon.h>
 #include <memory/paging.h>
 #include <string.h>
@@ -13,14 +14,20 @@
 #define VIRTQ_SIZE 8
 #define BUFSIZE 512
 
+typedef VIRTQ_AVAIL_T(VIRTQ_SIZE) virtq_avail_t;
+typedef VIRTQ_USED_T(VIRTQ_SIZE) virtq_used_t;
+
 typedef struct disk {
     virtq_desc_t *desc;
-    VIRTQ_AVAIL_T(VIRTQ_SIZE) *avail;
-    VIRTQ_USED_T(VIRTQ_SIZE) *used;
-    VIRTIO_BLK_REQ_T(BUFSIZE) reqs[VIRTQ_SIZE];
+    virtq_avail_t *avail;
+    virtq_used_t *used;
+
+    virtio_blk_req_t reqs[VIRTQ_SIZE];
+
+    u8 desc_inuse[VIRTQ_SIZE]; // bookkeeping
 } disk_t;
 
-disk_t disk;
+static disk_t disk;
 
 void disk0_init() {
     if (DISK0(VIRTIO_MMIO_MAGIC) != VIRTIO_MAGIC_VALUE)
@@ -68,6 +75,7 @@ void disk0_init() {
     u64 mb = ((capacity >> 11) % 1024);
     u64 gb = ((capacity >> 21) % 1024);
     DEBUG_INFO_NO_NEWLINE("Disk capacity is");
+    // avoid floating-point operations
     if (gb)
         DEBUG_PRINTF_RAW(" %lluGB", (long long unsigned)gb);
     if (mb)
@@ -114,53 +122,93 @@ void disk0_init() {
     DISK0(VIRTIO_MMIO_QUEUE_READY) = 1;
 
     DISK0(VIRTIO_MMIO_STATUS) |= VIRTIO_STATUS_DRIVER_OK;
+}
 
-    disk.reqs[0].header = (virtio_blk_req_header_t) {
-        .type = VIRTIO_BLK_T_IN,
-        .sector = 0,
+static int desc_alloc() {
+    for (int i = 0; i < VIRTQ_SIZE; ++i) {
+        if (!disk.desc_inuse[i]) {
+            disk.desc_inuse[i] = 1;
+            return i;
+        }
+    }
+    return -1;
+}
+
+static void desc_free(int i) {
+    if (i >= VIRTQ_SIZE)
+        panic("virtio blk: attempted to free descriptor index (%u) >= VIRTQ_SIZE (%u)", i, VIRTQ_SIZE);
+    if (!disk.desc_inuse[i])
+        panic("virtio blk: attempted to free descriptor not in use (index %u)", i);
+    disk.desc_inuse[i] = 0;
+}
+
+static int desc_alloc3(int idx[3]) {
+    for (int i = 0; i < 3; ++i) {
+        idx[i] = desc_alloc();
+        if (idx[i] == -1) {
+            for (int j = 0; j < i; ++j)
+                desc_free(j);
+            return -1;
+        }
+    }
+    return 0;
+}
+
+int virtio_blk_rw(u64 buf_pa, u32 blockno, u8 write) {
+    int idx[3];
+    while (desc_alloc3(idx) != 0);
+    DEBUG_INFO("%d %d %d", idx[0], idx[1], idx[2]);
+    DEBUG_INFO("%p", (void*)buf_pa);
+
+    virtio_blk_req_t *req = &disk.reqs[idx[0]];
+    req->header = (virtio_blk_req_header_t) {
+        .type = write ? VIRTIO_BLK_T_OUT : VIRTIO_BLK_T_IN,
+        .sector = blockno,
     };
-    disk.reqs[0].status = 0xff;
+    req->status = 0xff;
 
-    disk.desc[0].addr = (u64)&disk.reqs[0].header;
-    disk.desc[0].len = sizeof(disk.reqs[0].header);
-    disk.desc[0].flags = VIRTQ_DESC_F_NEXT;
-    disk.desc[0].next = 1;
+    // header
+    disk.desc[idx[0]] = (virtq_desc_t) {
+        .addr = (u64)&req->header,
+        .len = sizeof(req->header),
+        .flags = VIRTQ_DESC_F_NEXT,
+        .next = idx[1],
+    };
 
-    disk.desc[1].addr = (u64)&disk.reqs[0].data;
-    disk.desc[1].len = sizeof(disk.reqs[0].data);
-    disk.desc[1].flags = VIRTQ_DESC_F_NEXT | VIRTQ_DESC_F_WRITE;
-    disk.desc[1].next = 2;
+    // data buffer
+    disk.desc[idx[1]] = (virtq_desc_t) {
+        .addr = buf_pa,
+        .len = BUFSIZE,
+        .flags = VIRTQ_DESC_F_NEXT | (write ? 0 : VIRTQ_DESC_F_WRITE),
+        .next = idx[2],
+    };
 
-    disk.desc[2].addr = (u64)&disk.reqs[0].status;
-    disk.desc[2].len = 1;
-    disk.desc[2].flags = VIRTQ_DESC_F_WRITE;
-    disk.desc[2].next = 0;
+    // status
+    disk.desc[idx[2]] = (virtq_desc_t) {
+        .addr = (u64)&req->status,
+        .len = 1,
+        .flags = VIRTQ_DESC_F_WRITE,
+        // .next = 0,
+    };
 
-    disk.avail->ring[0] = 0;
+    disk.avail->ring[disk.avail->idx % VIRTQ_SIZE] = idx[0];
     disk.avail->idx++;
 
     __sync_synchronize(); // ensure everything is ready before notifying disk
 
     DISK0(VIRTIO_MMIO_QUEUE_NOTIFY) = 0;
 
-    // while (*(volatile u8*)&disk.reqs[0].status == 0xff);
-
     u64 i = 0;
     const u64 timeout = 100000000;
-    for (i = 0; i < timeout && *(volatile u8*)&disk.reqs[0].status == 0xff; ++i);
+    for (i = 0; i < timeout && *(volatile u8*)&disk.reqs[idx[0]].status == 0xff; ++i);
     if (i >= timeout)
         panic("Disk took too long to reply");
 
     if (*(volatile u8*)&disk.reqs[0].status)
-        panic("VirtIO replied to first read request with status 0x%x", disk.reqs[0].status);
+        panic("VirtIO replied to request with status 0x%x", disk.reqs[0].status);
 
-    // const int bytes_per_line = 16;
-    // DEBUG_INFO("First sector of disk0: ");
-    // for (u8 *line = disk.reqs[0].data; line != disk.reqs[0].data + BUFSIZE; line += bytes_per_line) {
-    //     for (u8 *byte = line; byte != line + bytes_per_line; ++byte) {
-    //         DEBUG_PRINTF_RAW("0x%s%x ", *byte < 0x10 ? "0" : "", *byte);
-    //     }
-    //     DEBUG_PRINTF_RAW("\n");
-    // }
-    // DEBUG_PRINTF_RAW("\n");
+    for (int i = 0; i < 2; ++i)
+        desc_free(idx[i]);
+
+    return 0;
 }

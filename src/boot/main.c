@@ -93,6 +93,23 @@ int main() {
     // Enable external interrupts
     CSRS("sie", CSR_IEIP_SEI);
 
+    #include <devices/virtio/blk.h>
+    #include <string.h>
+    u8 in[512], out[512];
+    memset(out, 0x31, sizeof(out));
+    virtio_blk_rw((u64)out, 0, 1);
+    virtio_blk_rw((u64)in, 0, 0);
+
+    const int bytes_per_line = 16;
+    DEBUG_INFO("First sector of disk0: ");
+    for (u8 *line = in; line != in + sizeof(in); line += bytes_per_line) {
+        for (u8 *byte = line; byte != line + bytes_per_line; ++byte) {
+            DEBUG_PRINTF_RAW("0x%s%x ", *byte < 0x10 ? "0" : "", *byte);
+        }
+        DEBUG_PRINTF_RAW("\n");
+    }
+    DEBUG_PRINTF_RAW("\n");
+
     //*
     DEBUG_SUCCESS("Entering main thread loop");
     while (1) {
