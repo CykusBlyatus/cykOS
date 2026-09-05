@@ -35,18 +35,21 @@ void yield() {
     asm volatile ("ecall");
 }
 
-void sleepchan(void *chan) {
-    u64 sie = CSRR("sstatus") & CSR_STATUS_SIE;
-    CSRC("sstatus", CSR_STATUS_SIE);
+void sleepchan(void *chan, spinlock_t *lk) {
     spinlock(&lock);
 
     current_thread->state = SLEEPING;
     current_thread->chan = chan;
 
     spinrelease(&lock);
-    CSRS("sstatus", sie);
+    if (lk)
+        spinrelease(lk);
 
+    CSRS("sstatus", CSR_STATUS_SIE);
     yield();
+
+    if (lk)
+        spinlock(lk);
 }
 
 void wakeupchan(void *chan) {
@@ -54,13 +57,17 @@ void wakeupchan(void *chan) {
     CSRC("sstatus", CSR_STATUS_SIE);
     spinlock(&lock);
 
-    for (kthread_t *thrd = current_thread->next; thrd != current_thread; thrd = thrd->next) {
+    kthread_t *thrd = current_thread->next;
+    do {
+        DEBUG_INFO("%p, %p", thrd->chan, chan);
         if (thrd->state != SLEEPING || thrd->chan != chan)
             continue;
 
+        DEBUG_SUCCESS("woke up a thread!");
         thrd->state = READY;
         thrd->chan = NULL;
-    }
+        thrd = thrd->next;
+    } while (thrd != current_thread);
 
     spinrelease(&lock);
     CSRS("sstatus", sie);
@@ -72,13 +79,13 @@ void sched(cpucontext_t *current_ctx) {
         CSRC("sstatus", CSR_STATUS_SIE);
         spinlock(&lock);
 
-        for (
-            kthread_t *thrd = current_thread->next;
-            thrd != current_thread;
-            thrd = thrd->next
-        ) {
-            if (thrd->state != READY)
+        kthread_t *thrd = current_thread->next;
+        do {
+            DEBUG_INFO("%d", thrd->state);
+            if (thrd->state != READY) {
+                thrd = thrd->next;
                 continue;
+            }
 
             if (current_ctx) {
                 current_thread->ctx = *current_ctx;
@@ -89,7 +96,7 @@ void sched(cpucontext_t *current_ctx) {
             current_thread = thrd;
             current_thread->state = RUNNING;
             break;
-        }
+        } while (thrd != current_thread);
 
         spinrelease(&lock);
         CSRS("sstatus", sie);
@@ -99,9 +106,12 @@ void sched(cpucontext_t *current_ctx) {
 
         if (sie & CSR_STATUS_SIE) {
             DEBUG_INFO("No threads to run, guess I'll sleep");
+            u64 sstatus = CSRR("sstatus");
             asm volatile ("wfi");
+            CSRW("sstatus", sstatus);
         } else {
-            DEBUG_INFO("No threads to run and interrupts disabled, guess I'll try to schedule a thread again");
+            panic("No threads to run and interrupts are disabled");
+            // DEBUG_INFO("No threads to run and interrupts disabled, guess I'll try to schedule a thread again");
         }
     }
 

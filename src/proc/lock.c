@@ -1,5 +1,6 @@
 #include "lock.h"
 #include <proc/thread.h>
+#include <stddef.h>
 
 void spinlock(spinlock_t *lock) {
     while (__sync_lock_test_and_set(&lock->locked, 1));
@@ -8,7 +9,7 @@ void spinlock(spinlock_t *lock) {
 
 void sleeplock(sleeplock_t *lock) {
     while (__sync_lock_test_and_set(&lock->locked, 1)) {
-        sleepchan(lock);
+        sleepchan(lock, NULL);
     }
 }
 

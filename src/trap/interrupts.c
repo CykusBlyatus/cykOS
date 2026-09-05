@@ -3,6 +3,7 @@
 
 #include "interrupts.h"
 #include <memory/paging.h>
+#include <devices/virtio/blk.h>
 #include "plic.h"
 #include <include/riscv.h>
 #include <stdint.h>
@@ -52,6 +53,10 @@ void kernel_trap(cpucontext_t *ctx) {
                     }
                     break;
                 }
+                case DISK0_IRQ: {
+                    virtio_blk_intr();
+                    break;
+                }
                 default:
                     DEBUG_WARN("Unhandled IRQ %d", irq);
             }
@@ -66,6 +71,7 @@ void kernel_trap(cpucontext_t *ctx) {
             CSRR("stimecmp");
             CSRW("stimecmp", mtime + SCHED_QUANTUM);
             ctx->pc = (void*)CSRR("sepc");
+            CSRS("sstatus", CSR_STATUS_SIE);
             sched(ctx);
             CSRW("sepc", ctx->pc);
             break;
@@ -73,6 +79,8 @@ void kernel_trap(cpucontext_t *ctx) {
         case CSR_CAUSE_ECALL_S: { // yield()
             CSRW("stimecmp", mtime + SCHED_QUANTUM);
             ctx->pc = (void*)CSRR("sepc") + 4;
+            DEBUG_INFO("ctx->pc = %p", ctx->pc);
+            CSRS("sstatus", CSR_STATUS_SIE);
             sched(ctx);
             CSRW("sepc", ctx->pc);
             break;

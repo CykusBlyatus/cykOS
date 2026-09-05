@@ -1,10 +1,11 @@
 #ifndef CYKOS_THREAD_H
 #define CYKOS_THREAD_H
 
+#include <proc/lock.h>
 #include <include/riscv.h>
 
 // Puts the thread to sleep on the channel until another thread wakes it up
-void sleepchan(void *chan);
+void sleepchan(void *chan, spinlock_t *lock);
 
 // Wakes up all threads sleeping on the channel
 void wakeupchan(void *chan);

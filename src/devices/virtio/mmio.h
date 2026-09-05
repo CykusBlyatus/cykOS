@@ -65,6 +65,7 @@
 #define VIRTIO_STATUS_FAILED        128
 
 // Device-independent feature bits
+#define VIRTIO_F_ANY_LAYOUT         (1L << 27)
 #define VIRTIO_F_INDIRECT_DESC      (1L << 28)
 #define VIRTIO_F_EVENT_IDX          (1L << 29)
 #define VIRTIO_F_VERSION_1          (1L << 32)

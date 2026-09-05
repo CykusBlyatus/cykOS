@@ -7,7 +7,7 @@
 #include <trap/plic.h>
 #include <devices/timer/timer.h>
 #include <memory/paging.h>
-#include <devices/virtio/virtio.h>
+#include <devices/virtio/blk.h>
 #include <memory/memory.h>
 #include <proc/thread.h>
 #include <proc/lock.h>
@@ -81,11 +81,11 @@ int main() {
 
     plic_set_priority(DISK0_IRQ, 1);
     plic_enable_interrupt(HART_CONTEXT(), DISK0_IRQ);
-    disk0_init();
+    virtio_blk_init();
 
-    char *p = kvmalloc(sizeof(*p));
-    *p = '1';
-    kthread_start(func, p);
+    // char *p = kvmalloc(sizeof(*p));
+    // *p = '1';
+    // kthread_start(func, p);
 
     // char c1 = '2';
     // kthread_start(func, &c1);
@@ -96,13 +96,13 @@ int main() {
     #include <devices/virtio/blk.h>
     #include <string.h>
     u8 in[512], out[512];
-    memset(out, 0x31, sizeof(out));
+    memset(out, 0x31, 512);
     virtio_blk_rw((u64)out, 0, 1);
     virtio_blk_rw((u64)in, 0, 0);
 
     const int bytes_per_line = 16;
     DEBUG_INFO("First sector of disk0: ");
-    for (u8 *line = in; line != in + sizeof(in); line += bytes_per_line) {
+    for (u8 *line = in; line != in + 512; line += bytes_per_line) {
         for (u8 *byte = line; byte != line + bytes_per_line; ++byte) {
             DEBUG_PRINTF_RAW("0x%s%x ", *byte < 0x10 ? "0" : "", *byte);
         }

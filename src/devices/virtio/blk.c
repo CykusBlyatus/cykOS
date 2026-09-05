@@ -2,7 +2,6 @@
 #include <auxiliary/debug.h>
 
 #include "blk.h"
-#include "virtio.h"
 #include "mmio.h"
 #include "virtq.h"
 #include "blk_internal.h"
@@ -10,6 +9,8 @@
 #include <memory/paging.h>
 #include <string.h>
 #include <stdio.h>
+#include <proc/thread.h>
+#include <proc/lock.h>
 
 #define VIRTQ_SIZE 8
 #define BUFSIZE 512
@@ -23,13 +24,14 @@ typedef struct disk {
     virtq_used_t *used;
 
     virtio_blk_req_t reqs[VIRTQ_SIZE];
-
     u8 desc_inuse[VIRTQ_SIZE]; // bookkeeping
+    u16 used_idx; // last handled idx
+    spinlock_t lock;
 } disk_t;
 
 static disk_t disk;
 
-void disk0_init() {
+void virtio_blk_init() {
     if (DISK0(VIRTIO_MMIO_MAGIC) != VIRTIO_MAGIC_VALUE)
         panic("magic number at virtIO base address not %p (is %p)", (void*)VIRTIO_MAGIC_VALUE, (void*)(long)DISK0(VIRTIO_MMIO_MAGIC));
     if (DISK0(VIRTIO_MMIO_VERSION) != VIRTIO_VERSION)
@@ -52,11 +54,14 @@ void disk0_init() {
         | VIRTIO_BLK_F_SCSI
         | VIRTIO_BLK_F_CONFIG_WCE
         | VIRTIO_BLK_F_MQ
+        | VIRTIO_F_EVENT_IDX
+        | VIRTIO_F_INDIRECT_DESC
+        | VIRTIO_F_ANY_LAYOUT
     );
 
     driver_features |= 0
-        | VIRTIO_F_NOTIFICATION_DATA
-        | VIRTIO_F_NOTIF_CONFIG_DATA
+        // | VIRTIO_F_NOTIFICATION_DATA
+        // | VIRTIO_F_NOTIF_CONFIG_DATA
         ;
 
     DISK0(VIRTIO_MMIO_DRV_FEAT_SEL) = 0;
@@ -147,7 +152,7 @@ static int desc_alloc3(int idx[3]) {
         idx[i] = desc_alloc();
         if (idx[i] == -1) {
             for (int j = 0; j < i; ++j)
-                desc_free(j);
+                desc_free(idx[j]);
             return -1;
         }
     }
@@ -155,10 +160,12 @@ static int desc_alloc3(int idx[3]) {
 }
 
 int virtio_blk_rw(u64 buf_pa, u32 blockno, u8 write) {
+    DEBUG_INFO("locking");
+    spinlock(&disk.lock);
+
     int idx[3];
     while (desc_alloc3(idx) != 0);
-    DEBUG_INFO("%d %d %d", idx[0], idx[1], idx[2]);
-    DEBUG_INFO("%p", (void*)buf_pa);
+    DEBUG_INFO("descriptors: %d %d %d, buf_pa: %p", idx[0], idx[1], idx[2], (void*)buf_pa);
 
     virtio_blk_req_t *req = &disk.reqs[idx[0]];
     req->header = (virtio_blk_req_header_t) {
@@ -196,19 +203,46 @@ int virtio_blk_rw(u64 buf_pa, u32 blockno, u8 write) {
 
     __sync_synchronize(); // ensure everything is ready before notifying disk
 
+    CSRC("sstatus", CSR_STATUS_SIE);
     DISK0(VIRTIO_MMIO_QUEUE_NOTIFY) = 0;
 
-    u64 i = 0;
-    const u64 timeout = 100000000;
-    for (i = 0; i < timeout && *(volatile u8*)&disk.reqs[idx[0]].status == 0xff; ++i);
-    if (i >= timeout)
-        panic("Disk took too long to reply");
+    while (disk.reqs[idx[0]].status == 0xff)
+        sleepchan(&disk.reqs[idx[0]], &disk.lock);
 
-    if (*(volatile u8*)&disk.reqs[0].status)
-        panic("VirtIO replied to request with status 0x%x", disk.reqs[0].status);
+    DEBUG_INFO("finished sleep");
 
-    for (int i = 0; i < 2; ++i)
+    // while (*(volatile u8*)&disk.reqs[idx[0]].status == 0xff);
+    // u8 status = disk.reqs[idx[0]].status;
+    // if (status)
+    //     panic("%s: status = 0x%x", __func__, status);
+
+    for (int i = 0; i < 3; ++i)
         desc_free(idx[i]);
 
+    spinrelease(&disk.lock);
     return 0;
+}
+
+void virtio_blk_intr() {
+    DEBUG_INFO("called");
+    spinlock(&disk.lock);
+    DISK0(VIRTIO_MMIO_INTERRUPT_ACK) = DISK0(VIRTIO_MMIO_INTERRUPT_STATUS) & 0x1;
+
+    __sync_synchronize();
+
+    while(disk.used_idx != disk.used->idx) {
+        DEBUG_INFO("meow");
+        __sync_synchronize();
+        int idx = disk.used->ring[disk.used_idx % VIRTQ_SIZE].id;
+
+        if (disk.reqs[idx].status)
+            panic("%s: blk device returned status 0x%x", __func__, disk.reqs[idx].status);
+
+        DEBUG_INFO("waking up idx %d", idx);
+        wakeupchan(&disk.reqs[idx]);
+
+        ++disk.used_idx;
+    }
+    spinrelease(&disk.lock);
+    DEBUG_INFO("exitting");
 }
